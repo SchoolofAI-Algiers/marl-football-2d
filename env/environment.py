@@ -1,5 +1,3 @@
-from typing import List
-
 import numpy as np
 import pygame
 from env.utils import get_dimensions, get_physics, get_simulation
