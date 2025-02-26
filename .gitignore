@@ -1,3 +1,4 @@
 .venv/
+__pycache__/
 marl_football_2d.egg-info/
 test.*
