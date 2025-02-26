@@ -47,14 +47,14 @@ class Object():
     def __str__(self):
         return f"Object(radius={self.radius}, position={self.position}, velocity={self.velocity}, rotation={self.rotation}, angular_velocity={self.angular_velocity})"
     
-class Ball(Object):
+class Ball():
     def __init__(self, object: Object):
         self.object = object
         
     def __str__(self):
         return f"Ball({self.object})"
         
-class Player(Object):
+class Player():
     def __init__(self, object: Object, team: int):
         self.object = object
         self.team = team
