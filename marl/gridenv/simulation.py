@@ -7,7 +7,7 @@ pygame.init()
 clock = pygame.time.Clock()
 
 env = FootballEnv()
-
+action_space = env.action_space
 done = False
 
 while not done:
@@ -16,8 +16,8 @@ while not done:
             done = True
 
     actions = {
-        "A": random.choice(["N", "S", "E", "W", "STAY"]),
-        "B": random.choice(["N", "S", "E", "W", "STAY"])
+        "A": random.choice(action_space),
+        "B": random.choice(action_space)
     }
 
     state, rewards = env.step(actions)

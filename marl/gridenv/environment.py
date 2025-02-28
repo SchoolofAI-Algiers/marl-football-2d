@@ -10,6 +10,7 @@ class FootballEnv:
         self.start_positions = [(1, 4), (2, 2)] 
         self.goals = {"A": [(1, 0), (2, 0)], "B": [(1, 6), (2, 6)]}  
         self.non_accessible_cells = [(0, 0), (0, 6), (3, 0), (3, 6)]
+        self.action_space = ["N", "S", "E", "W", "NE", "NW", "SE", "SW", "STAY"]
 
         self.done = False
 
@@ -37,28 +38,32 @@ class FootballEnv:
         - Returns (state, rewards [, done: TO INCLUDE, info: TO INCLUDE])
         """
 
-        moves = {"N": (-1, 0), "S": (1, 0), "E": (0, 1), "W": (0, -1), "STAY": (0, 0)}
+        moves = {
+            "N": (-1, 0), "S": (1, 0), "E": (0, 1), "W": (0, -1),
+            "NE": (-1, 1), "NW": (-1, -1), "SE": (1, 1), "SW": (1, -1),
+            "STAY": (0, 0)
+        }
+
         new_positions = {}
 
         for agent in actions:
             new_pos = (self.positions[agent][0] + moves[actions[agent]][0],
                     self.positions[agent][1] + moves[actions[agent]][1])
-            
-            # Check if the new position is within bounds and not in a non-accessible cell
-            if (0 <= new_pos[0] < self.grid_size[0] and 0 <= new_pos[1] < self.grid_size[1] and
+
+            # Check if the new position is valid
+            if (0 <= new_pos[0] < self.grid_size[0] and
+                0 <= new_pos[1] < self.grid_size[1] and
                 new_pos not in self.non_accessible_cells):
                 new_positions[agent] = new_pos
             else:
                 new_positions[agent] = self.positions[agent]  # Stay in place if move is invalid
 
-        # Check for collision (one agent moving into the other's position)
+        # Collision handling: If a player moves into the other’s square, possession changes
         if new_positions["A"] == self.positions["B"] and new_positions["B"] == self.positions["B"]:
-            # A tries to move into B's position, possession goes to B
             self.ball_owner = "B"
             new_positions["A"] = self.positions["A"]  # A's move is canceled
 
         elif new_positions["B"] == self.positions["A"] and new_positions["A"] == self.positions["A"]:
-            # B tries to move into A's position, possession goes to A
             self.ball_owner = "A"
             new_positions["B"] = self.positions["B"]  # B's move is canceled
 
@@ -73,6 +78,7 @@ class FootballEnv:
                 return self._get_state(), reward
 
         return self._get_state(), {"A": 0, "B": 0}
+
 
     
 
