@@ -1,12 +1,13 @@
 import pygame
 import numpy as np
 from env.config import FPS
-from env.environment import FootballEnv
+from env.environment import FootballEnv,FootballLowEnv,FootballHighEnv
 
 pygame.init()
 clock = pygame.time.Clock()
 
-env = FootballEnv(team_size=11)
+
+env = FootballHighEnv(team_size=11)
 
 state = env.reset()
 done = False
@@ -18,7 +19,7 @@ while not done:
 
     act = 1
     actions = [np.random.uniform(-act, act, 5) for _ in range(env.num_players)]
-    state, rewards, done, _ = env.step(actions)
+    state, rewards, done, _ = env.step()
     env.render()
     
     clock.tick(FPS)
