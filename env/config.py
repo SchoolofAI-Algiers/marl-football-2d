@@ -7,15 +7,16 @@ LENGTH_TO_WIDTH_RATIO = 6/10
 
 # player attributes
 PLAYER_RADIUS = 1
-PLAYER_MAX_SPEED = 30
+PLAYER_MAX_SPEED = 25
 PLAYER_MAX_ROTATION = np.pi
+PLAYER_MAX_KICKING_FORCE = 10
 
 # ball attributes
 BALL_RADIUS = 0.5
 
 # simulation attributes
 DT = 0.1
-MAX_GAME_TIME = 300
+MAX_GAME_TIME = 1000
 FPS = 60
 
 # physics attributes
