@@ -1,11 +1,11 @@
-from env.config import (
+from config import (
     STADIUM_LENGTH, PLAYERS_TO_LENGTH_RATIO, LENGTH_TO_WIDTH_RATIO,
     PLAYER_RADIUS, BALL_RADIUS, PLAYER_MAX_SPEED, PLAYER_MAX_ROTATION,
     DT, MAX_GAME_TIME,
     FRICTION_FACTOR, ANGULAR_FRICTION_FACTOR, AIR_RESISTANCE
     
 )
-from env.models import Dimensions, Physics, Simulation
+from models import Dimensions, Physics, Simulation
 
 def get_dimensions(num_players: int) -> Dimensions:
     return Dimensions(

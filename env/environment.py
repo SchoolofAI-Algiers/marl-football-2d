@@ -1,8 +1,8 @@
 import numpy as np
 import pygame
-from env.utils import get_dimensions, get_physics, get_simulation
-from env.models import GameState
-from env.engine import Object, Player, Ball, distance
+from utils import get_dimensions, get_physics, get_simulation
+from models import GameState
+from engine import Object, Player, Ball, distance
 
 class FootballEnv:
     def __init__(self, team_size=2):
@@ -123,7 +123,7 @@ class FootballEnv:
             
         rewards = [0.0] * self.num_players
         
-        # Update each player
+        # 1. First update ALL players' movements
         for i, player in enumerate(self.players):
             ax, ay, alpha, kx, ky = actions[i]
             
@@ -141,13 +141,24 @@ class FootballEnv:
                 max_width=self.dimensions.stadium_width
             )
         
+        # 2. Then check for ball contacts AFTER all players moved
+        ball_acceleration = [0.0, 0.0]
+        possession = None
+        sum_radii = (self.dimensions.player_radius 
+                    + self.dimensions.ball_radius)
+        
+        for i, player in enumerate(self.players):
             dist_to_ball = distance(player.object, self.ball.object)
-            if dist_to_ball < self.dimensions.player_radius + self.dimensions.ball_radius:
-                ball_acceleration = [kx, ky]
-                self.game_state.possession = player.team
-            else:
-                ball_acceleration = [0, 0]
-
+            
+            # Use <= for contact detection
+            if dist_to_ball <= sum_radii:  
+                # Apply this player's kick force
+                kx, ky = actions[i][3], actions[i][4]
+                ball_acceleration[0] += kx
+                ball_acceleration[1] += ky
+                possession = player.team  # Last contacting player gets possession
+        
+        # 3. Apply accumulated acceleration to ball
         self.ball.object.act(
             acceleration=ball_acceleration,
             angular_acceleration=0,
@@ -162,6 +173,12 @@ class FootballEnv:
             max_width=self.dimensions.stadium_width
         )
         
+        # Update possession state
+        self.game_state.possession = possession
+        if possession is not None:
+            self.game_state.possession_time[possession] += self.simulation.dt
+        
+        # Check for goals
         if self.ball.object.position[0] < 0:
             self.game_state.score[1] += 1
             self.reset(on_goal=True)
@@ -172,12 +189,10 @@ class FootballEnv:
             self.game_state.score[0] += 1
             self.reset(on_goal=True)
             for i, player in enumerate(self.players):
-                rewards[i] = 1.0 if player['team'] == 0 else -1.0
+                rewards[i] = 1.0 if player.team == 0 else -1.0
         
         # Update game state
         self.game_state.game_time += self.simulation.dt
-        if self.game_state.possession is not None:
-            self.game_state.possession_time[self.game_state.possession] += self.simulation.dt
         self.done = self.game_state.game_time >= self.simulation.max_game_time
         
         return self._get_state(), rewards, self.done, {}
@@ -258,6 +273,6 @@ class FootballEnv:
         # Draw ball
         bx = offset_x + self.ball.object.position[0] * self.scale
         by = offset_y + self.ball.object.position[1] * self.scale
-        pygame.draw.circle(self.screen, (255, 255, 255), (int(bx), int(by)), int(self.dimensions.ball_radius * self.scale))
+        pygame.draw.circle(self.screen, (255, 165, 0), (int(bx), int(by)), int(self.dimensions.ball_radius * self.scale))
 
         pygame.display.flip()

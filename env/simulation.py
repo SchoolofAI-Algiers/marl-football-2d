@@ -1,7 +1,9 @@
 import pygame
 import numpy as np
-from env.config import FPS
-from env.environment import FootballEnv
+from config import FPS
+from environment import FootballEnv
+import time
+
 
 pygame.init()
 clock = pygame.time.Clock()
