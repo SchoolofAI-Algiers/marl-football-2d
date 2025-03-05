@@ -1,8 +1,8 @@
 import numpy as np
 import pygame
-from utils import get_dimensions, get_physics, get_simulation
-from models import GameState
-from engine import Object, Player, Ball, distance
+from env.utils import get_dimensions, get_physics, get_simulation
+from env.models import GameState
+from env.engine import Object, Player, Ball, distance
 
 class FootballEnv:
     def __init__(self, team_size=2):
