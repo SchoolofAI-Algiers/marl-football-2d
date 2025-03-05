@@ -1,6 +1,6 @@
 import pygame
 import random
-from config import FPS
+from config import FPS, STEP_DELAY, GOAL_DELAY
 from environment import FootballEnv
 
 pygame.init()
@@ -20,10 +20,14 @@ while not done:
         "B": random.choice(action_space)
     }
 
-    state, rewards = env.step(actions)
+    state, rewards, done, info = env.step(actions)
+    if info["goal"]:
+        env.render()
+        pygame.time.delay(GOAL_DELAY)
+        env.reset(on_goal=True, conceeding_team=info["conceeding_team"])
     env.render()
 
-    pygame.time.delay(500)
+    pygame.time.delay(STEP_DELAY)
     clock.tick(FPS)
 
 pygame.quit()
