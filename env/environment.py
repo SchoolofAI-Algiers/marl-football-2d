@@ -1,8 +1,11 @@
 import numpy as np
+import math
 import pygame
 from env.utils import get_dimensions, get_physics, get_simulation
-from env.models import GameState
+from env.models import GameState,MovementInput,MovementOutput
 from env.engine import Object, Player, Ball, distance
+from env.steering import SteeringBehaviors as steering
+from env.config import CATCH_RADIUS,TACKLE_RADIUS
 
 class FootballEnv:
     def __init__(self, team_size=2):
@@ -31,6 +34,8 @@ class FootballEnv:
             possession_time=[0.0, 0.0]
         )
 
+       
+
         self.done = False
 
     def _init_players(self):
@@ -42,6 +47,7 @@ class FootballEnv:
         """
         self.players = []
         for i in range(self.num_players):
+
             team = 0 if i < self.team_size else 1
             x = 0.2 * self.dimensions.stadium_length if team == 0 else 0.8 * self.dimensions.stadium_length
             
@@ -109,8 +115,88 @@ class FootballEnv:
             self.done = False
 
         return self._get_state()
+    
+    def translate_action(self,object,action,neighbors,target=None):        
+        if action=="pass":
+            actions = [
+                (steering.seek, 1.0),  # Seek towards the ball
+                (steering.arrive, 0.5),  # Arrive at the ball with a slower speed
+                
+            ]
+            if target==None:
+                target=MovementInput(neighbors[0].position,neighbors[0].velocity,neighbors[0].rotation,neighbors[0].angular_velocity)
+
+            rotation=steering.face(object.object,neighbors[0].object)
+
+            ballOutput=steering.blend_steering_behaviors(actions,target,neighbors[0],neighbors)
+            playerOutput=MovementOutput(linear=[0.0, 0.0], angular=0.0)
+
+        elif action =='idle': #the player doesn't do anything
+            playerOutput=MovementOutput(linear=[0.0, 0.0], angular=0.0)
+            ballOutput=MovementOutput(linear=[0.0, 0.0], angular=0.0)
+            rotation= object.object.rotation
+
+        elif action =='follow': #the player goes after the ball
+            actions = [
+                (steering.seek, 1.0),  # Seek towards the ball
+                (steering.arrive, 0.5),  # Arrive at the ball with a slower speed
+                
+            ]
+            rotation=steering.face(object.object,target.object)
+            playerOutput=steering.blend_steering_behaviors(actions,object,target,neighbors)
+            ballOutput=MovementOutput(linear=[0.0, 0.0], angular=0.0)
+
+        elif action=="catch": #the player attempts to catch the ball
+            actions = [
+                (steering.seek, 0.5),  # Seek towards the ball
+                (steering.arrive, 1),  # Arrive at the ball with a slower speed  
+            ]
+            dist_to_ball = distance(object.object, self.ball.object)
+            if dist_to_ball<= CATCH_RADIUS:
+                playerOutput=steering.blend_steering_behaviors(actions,object,target,neighbors)
+
+                ballOutput=steering.blend_steering_behaviors([actions[1]],object,target,neighbors)
+                
+            else:
+                playerOutput=MovementOutput(linear=[0.0, 0.0], angular=0.0)
+                ballOutput=MovementOutput(linear=[0.0, 0.0], angular=0.0)
+            rotation= object.object.rotation
+
+        elif action == "tackle":  # The player attempts to tackle the opponent with the ball
+            actions = [
+                (steering.pursue, 1.0),  # Predict opponent's movement and chase
+                (steering.seek, 0.7),    # Directly chase if prediction fails
+                (steering.arrive, 0.5),  # Slow down near opponent for a controlled tackle  
+            ]
+            
+            dist_to_opponent = distance(object.object, target.object)  # Target is the opponent
+
+            if dist_to_opponent <= TACKLE_RADIUS:
+                playerOutput = steering.blend_steering_behaviors(actions, object, target, neighbors)
+                ballOutput = MovementOutput(linear=[0.0, 0.0], angular=0.0)
+
+                # Opponent slows down or stops if tackled successfully
+                #opponentOutput = steering.blend_steering_behaviors([(steering.arrive, 1.0)], target, object, neighbors)
+            else:
+                playerOutput = MovementOutput(linear=[0.0, 0.0], angular=0.0)
+                ballOutput = MovementOutput(linear=[0.0, 0.0], angular=0.0)
+
+            rotation = object.object.rotation
+        elif action=="wander":
+            actions = [
+                (steering.wander, 1.0),  
+            ]
+            playerOutput = steering.blend_steering_behaviors(actions, object, target, neighbors)
+            ballOutput = MovementOutput(linear=[0.0, 0.0], angular=0.0)
+            rotation = object.object.rotation
+
+        return [playerOutput.linear[0], playerOutput.linear[1], playerOutput.angular ,ballOutput.linear[0],ballOutput.linear[1] ,rotation]
+
+
+
 
     def step(self, actions):
+
         """
         One simulation step:
         - Applies actions to players (acceleration, angular acceleration, kick)
@@ -122,10 +208,28 @@ class FootballEnv:
             return self._get_state(), [0] * self.num_players, True, {}
             
         rewards = [0.0] * self.num_players
+
+        ball_acceleration = [0, 0]
+        #possession = None
+        sum_radii = (self.dimensions.player_radius 
+                    + self.dimensions.ball_radius)
         
         # 1. First update ALL players' movements
+        ball_rotation=self.ball.object.rotation
         for i, player in enumerate(self.players):
-            ax, ay, alpha, kx, ky = actions[i]
+    
+
+
+            ax, ay, alpha, kx, ky, rotation = self.translate_action(player,actions[i],self._get_neighbors(player,30),self.ball)
+
+            dist_to_ball = distance(player.object, self.ball.object)
+            
+            # Use <= for contact detection
+            if dist_to_ball <= sum_radii:
+                ball_rotation=rotation
+                ball_acceleration[0] += kx
+                ball_acceleration[1] += ky
+                self.game_state.possession= player.team
             
             player.object.act(
                 acceleration=(ax, ay),
@@ -138,26 +242,31 @@ class FootballEnv:
                 min_length=0,
                 max_length=self.dimensions.stadium_length,
                 min_width=0,
-                max_width=self.dimensions.stadium_width
+                max_width=self.dimensions.stadium_width,
+                target_rotation=rotation
+                
             )
         
-        # 2. Then check for ball contacts AFTER all players moved
-        ball_acceleration = [0.0, 0.0]
-        possession = None
-        sum_radii = (self.dimensions.player_radius 
-                    + self.dimensions.ball_radius)
         
+        #2. Then check for ball contacts AFTER all players moved
         for i, player in enumerate(self.players):
             dist_to_ball = distance(player.object, self.ball.object)
-            
+                
             # Use <= for contact detection
             if dist_to_ball <= sum_radii:  
                 # Apply this player's kick force
-                kx, ky = actions[i][3], actions[i][4]
+                # kx, ky = actions[i][3], actions[i][4]
                 ball_acceleration[0] += kx
                 ball_acceleration[1] += ky
-                possession = player.team  # Last contacting player gets possession
-        
+                self.game_state.possession= player.team  # Last contacting player gets possession
+
+    
+
+        if self.game_state.possession==0:
+            self.ball.object.rotation=0.0
+        else: 
+            self.ball.object.rotation=np.pi
+
         # 3. Apply accumulated acceleration to ball
         self.ball.object.act(
             acceleration=ball_acceleration,
@@ -170,13 +279,14 @@ class FootballEnv:
             min_length=0,
             max_length=self.dimensions.stadium_length,
             min_width=0,
-            max_width=self.dimensions.stadium_width
+            max_width=self.dimensions.stadium_width,
+            target_rotation=ball_rotation
         )
         
         # Update possession state
-        self.game_state.possession = possession
-        if possession is not None:
-            self.game_state.possession_time[possession] += self.simulation.dt
+        #self.game_state.possession = possession
+        if self.game_state.possession  is not None:
+            self.game_state.possession_time[self.game_state.possession ] += self.simulation.dt
         
         # Check for goals
         if self.ball.object.position[0] < 0:
@@ -196,6 +306,25 @@ class FootballEnv:
         self.done = self.game_state.game_time >= self.simulation.max_game_time
         
         return self._get_state(), rewards, self.done, {}
+    
+
+    def _get_neighbors(self,player,radius)->list:
+        '''
+        get the neighbors of the player within a certain radius
+        '''
+        neighbors = []
+        player_position = np.array(player.object.position)
+
+        for other_player in self.players:
+            if other_player != player:  # Avoid self-comparison
+                other_position = np.array(other_player.object.position)
+                distance = np.linalg.norm(other_position - player_position)
+
+
+                if distance <= radius:
+                    neighbors.append(other_player)
+
+        return neighbors
 
     def render(self):
         """
@@ -270,9 +399,24 @@ class FootballEnv:
             color = (255, 0, 0) if player.team == 0 else (0, 0, 255)
             pygame.draw.circle(self.screen, color, (int(px), int(py)), int(self.dimensions.player_radius * self.scale))
 
+
+            # Draw facing direction
+            # facing_length = 10  # Standard length for the facing direction line
+            # player_rotation = player.object.rotation  # Directly use the rotation attribute
+            # end_x = px + facing_length * math.cos(player_rotation)
+            # end_y = py - facing_length * math.sin(player_rotation)  # Subtract because y-axis is inverted in Pygame
+            # pygame.draw.line(self.screen, (255, 255, 255), (px, py), (end_x, end_y), 2)
+            
         # Draw ball
         bx = offset_x + self.ball.object.position[0] * self.scale
         by = offset_y + self.ball.object.position[1] * self.scale
         pygame.draw.circle(self.screen, (255, 165, 0), (int(bx), int(by)), int(self.dimensions.ball_radius * self.scale))
+
+        # Draw facing direction
+        # facing_length = 20  # Standard length for the facing direction line
+        # ball_rotation = self.ball.object.rotation  # Directly use the rotation attribute
+        # end_x = bx + facing_length * math.cos(ball_rotation)
+        # end_y = by - facing_length * math.sin(ball_rotation)  # Subtract because y-axis is inverted in Pygame
+        # pygame.draw.line(self.screen, (255, 255, 255), (bx, by), (end_x, end_y), 2)
 
         pygame.display.flip()
