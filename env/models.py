@@ -23,3 +23,17 @@ class GameState(BaseModel):
     score: List[int]
     possession: Union[int, None]
     possession_time: List[int]
+
+
+#the input data structure used by the steering bahviors
+class MovementInput(BaseModel):  
+    #radius :float
+    position : List[float]
+    velocity : List[float]
+    rotation : float
+    angular_velocity : float
+
+#data structure to store the output of the movement
+class MovementOutput(BaseModel):
+    linear: List[float] # type: ignore
+    angular: float  # Angular acceleration
