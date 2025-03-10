@@ -3,6 +3,7 @@ import pygame
 from env.utils import get_dimensions, get_physics, get_simulation
 from env.models import GameState
 from env.engine import Object, Player, Ball, distance
+from config import WHITE, GREEN, ORANGE, RENDER_SCALE, PADDING
 
 class FootballEnv:
     def __init__(self, team_size=2):
@@ -205,74 +206,78 @@ class FootballEnv:
         - Circles representing players (red for team 0, blue for team 1)
         - A white circle for the ball
         """
+        
         if not hasattr(self, 'screen'):
-            # Initialize video system (if not already done)
             pygame.init()
-            self.width_pixels = 800
-            self.height_pixels = 480
+            self.scale = RENDER_SCALE
+            self.width_pixels = (self.dimensions.stadium_length + PADDING) * self.scale
+            self.height_pixels = (self.dimensions.stadium_width + PADDING) * self.scale
             self.screen = pygame.display.set_mode((self.width_pixels, self.height_pixels))
             pygame.display.set_caption("2D Football Environment")
-            self.scale = 8  # 1 game unit = 8 pixels
 
-        # Fill background with a grass-green color
-        self.screen.fill((34, 139, 34))
+        self.screen.fill(GREEN)
+        
+        def draw_rectangle(x, y, length, width):
+            pygame.draw.rect(self.screen, WHITE, pygame.Rect(x, y, length, width), 2)
+        
+        def draw_circle(x, y, radius, color=WHITE):
+            pygame.draw.circle(self.screen, color, (int(x), int(y)), int(radius))
 
-        # Convert field dimensions to pixel space
-        field_px_length = self.dimensions.stadium_length * self.scale
-        field_px_width = self.dimensions.stadium_width * self.scale
+        field_length_px = self.dimensions.stadium_length * self.scale
+        field_width_px = self.dimensions.stadium_width * self.scale
+        offset_x = (self.width_pixels - field_length_px) // 2
+        offset_y = (self.height_pixels - field_width_px) // 2
 
-        # Center the field in the window
-        offset_x = (self.width_pixels - field_px_length) // 2
-        offset_y = (self.height_pixels - field_px_width) // 2
+        # Draw field boundary
+        draw_rectangle(offset_x, offset_y, field_length_px, field_width_px)
+        
+        # Draw center line and circle
+        center_x = offset_x + field_length_px // 2
+        center_y = offset_y + field_width_px // 2
+        pygame.draw.line(self.screen, WHITE, (center_x, offset_y), (center_x, offset_y + field_width_px), 2)
+        pygame.draw.circle(self.screen, WHITE, (center_x, center_y), self.dimensions.center_circle_radius * self.scale, 2)
 
-        # Draw outer boundary
-        field_rect = pygame.Rect(offset_x, offset_y, field_px_length, field_px_width)
-        pygame.draw.rect(self.screen, (255, 255, 255), field_rect, 2)
+        # Draw penalty areas
+        box_length_px = self.dimensions.penalty_area_length * self.scale
+        box_width_px = self.dimensions.penalty_area_width * self.scale
+        goal_area_length_px = self.dimensions.goal_area_length * self.scale
+        goal_area_width_px = self.dimensions.goal_area_width * self.scale
+        
+        penalty_top_y = offset_y + (field_width_px - box_width_px) / 2
+        goal_top_y = offset_y + (field_width_px - goal_area_width_px) / 2
 
-        # Draw center line
-        center_x = offset_x + field_px_length // 2
-        pygame.draw.line(self.screen, (255, 255, 255), (center_x, offset_y), (center_x, offset_y + field_px_width), 2)
+        draw_rectangle(offset_x, penalty_top_y, box_length_px, box_width_px)
+        draw_rectangle(offset_x + field_length_px - box_length_px, penalty_top_y, box_length_px, box_width_px)
+        draw_rectangle(offset_x, goal_top_y, goal_area_length_px, goal_area_width_px)
+        draw_rectangle(offset_x + field_length_px - goal_area_length_px, goal_top_y, goal_area_length_px, goal_area_width_px)
 
-        # Draw center circle (radius ~10 game units)
-        center_circle_radius = 10 * self.scale
-        pygame.draw.circle(self.screen, (255, 255, 255), (center_x, offset_y + field_px_width // 2), center_circle_radius, 2)
+        # Draw penalty spots
+        
+        penalty_spot_radius_px = self.dimensions.penalty_spot_radius * self.scale
+        left_penalty_x = offset_x + self.dimensions.penalty_spot_distance * self.scale
+        right_penalty_x = offset_x + field_length_px - self.dimensions.penalty_spot_distance * self.scale
+        
+        draw_circle(left_penalty_x, center_y, penalty_spot_radius_px)
+        draw_circle(right_penalty_x, center_y, penalty_spot_radius_px)
 
-        # Draw penalty boxes (simplified)
-        box_width = 16.5 * self.scale
-        box_height = 40.32 * self.scale
-        top_box_y = offset_y + (field_px_width - box_height) / 2
-
-        # Left penalty box
-        left_box_rect = pygame.Rect(offset_x, top_box_y, box_width, box_height)
-        pygame.draw.rect(self.screen, (255, 255, 255), left_box_rect, 2)
-
-        # Right penalty box
-        right_box_rect = pygame.Rect(offset_x + field_px_length - box_width, top_box_y, box_width, box_height)
-        pygame.draw.rect(self.screen, (255, 255, 255), right_box_rect, 2)
-
-        # Draw goals inside the boundaries for visibility
-        goal_width = 2 * self.scale
-        goal_height = 14 * self.scale
-        top_goal_y = offset_y + (field_px_width - goal_height) / 2
-
-        # Left goal
-        left_goal_rect = pygame.Rect(offset_x, top_goal_y, goal_width, goal_height)
-        pygame.draw.rect(self.screen, (255, 255, 255), left_goal_rect, 2)
-
-        # Right goal
-        right_goal_rect = pygame.Rect(offset_x + field_px_length - goal_width, top_goal_y, goal_width, goal_height)
-        pygame.draw.rect(self.screen, (255, 255, 255), right_goal_rect, 2)
+        # Draw goals
+        goal_post_width_px = 2 * self.scale
+        goal_post_height_px = self.dimensions.goal_width * self.scale
+        goal_post_top_y = offset_y + (field_width_px - goal_post_height_px) / 2
+        
+        draw_rectangle(offset_x / 2 + 1, goal_post_top_y, offset_x / 2, goal_post_height_px)
+        draw_rectangle(offset_x + field_length_px - 1, goal_post_top_y, offset_x / 2, goal_post_height_px)
 
         # Draw players
         for player in self.players:
             px = offset_x + player.object.position[0] * self.scale
             py = offset_y + player.object.position[1] * self.scale
             color = (255, 0, 0) if player.team == 0 else (0, 0, 255)
-            pygame.draw.circle(self.screen, color, (int(px), int(py)), int(self.dimensions.player_radius * self.scale))
+            draw_circle(px, py, self.dimensions.player_radius * self.scale, color)
 
         # Draw ball
-        bx = offset_x + self.ball.object.position[0] * self.scale
-        by = offset_y + self.ball.object.position[1] * self.scale
-        pygame.draw.circle(self.screen, (255, 165, 0), (int(bx), int(by)), int(self.dimensions.ball_radius * self.scale))
-
+        ball_x = offset_x + self.ball.object.position[0] * self.scale
+        ball_y = offset_y + self.ball.object.position[1] * self.scale
+        draw_circle(ball_x, ball_y, self.dimensions.ball_radius * self.scale, ORANGE)
+        
         pygame.display.flip()

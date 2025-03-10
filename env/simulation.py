@@ -6,7 +6,7 @@ from env.environment import FootballEnv
 pygame.init()
 clock = pygame.time.Clock()
 
-env = FootballEnv(team_size=11)
+env = FootballEnv(team_size=1)
 
 state = env.reset()
 done = False
