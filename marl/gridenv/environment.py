@@ -1,7 +1,7 @@
 import pygame
 import random
 
-from config import (
+from .config import (
     ASSETS_PATH, 
     GRID_SIZES, CELL_SIZE, DEFAULT_SIZE,
     GREEN, BLUE, WHITE, GRAY, A_COLOR, B_COLOR
