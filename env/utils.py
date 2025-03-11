@@ -2,7 +2,7 @@ import math
 
 from env.config import (
     STADIUM_LENGTH, STADIUM_WIDTH, CENTER_CIRCLE_RADIUS, PENALTY_AREA_LENGTH, PENALTY_AREA_WIDTH, GOAL_AREA_LENGTH, GOAL_AREA_WIDTH, GOAL_WIDTH, PENALTY_SPOT_DISTANCE, PENALTY_SPOT_RADIUS,
-    PLAYER_RADIUS, BALL_RADIUS, PLAYER_MAX_SPEED, PLAYER_MAX_ROTATION,
+    PLAYER_RADIUS, BALL_RADIUS, PLAYER_MAX_SPEED, PLAYER_MAX_ANGULAR_SPEED,
     DT, MAX_GAME_TIME,
     FRICTION_FACTOR, ANGULAR_FRICTION_FACTOR, AIR_RESISTANCE
 )
@@ -31,7 +31,7 @@ def get_dimensions(num_players: int) -> Dimensions:
 def get_physics() -> Physics:
     return Physics(
         player_max_speed=PLAYER_MAX_SPEED,
-        player_max_rotation=PLAYER_MAX_ROTATION,
+        player_max_angular_speed=PLAYER_MAX_ANGULAR_SPEED,
         friction_factor=FRICTION_FACTOR,
         angular_friction_factor=ANGULAR_FRICTION_FACTOR,
         air_resistance=AIR_RESISTANCE

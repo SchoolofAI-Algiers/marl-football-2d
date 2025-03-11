@@ -2,20 +2,57 @@ import numpy as np
 from typing import Tuple
 
 class Object():
-    def __init__(self, radius: float, position: Tuple[float, float], velocity: Tuple[float, float], rotation: float, angular_velocity: float):
+    def __init__(self, radius: float, position: Tuple[float, float], velocity: Tuple[float, float], orientation: float, angular_velocity: float, bounceable: bool = False):
         self.radius = radius
         self.position = np.array(position)
         self.velocity = np.array(velocity)
-        self.rotation = rotation
+        self.orientation = orientation
         self.angular_velocity = angular_velocity
+        self.bounceable = bounceable
         
     def get_speed(self):
         return np.linalg.norm(self.velocity)
     
-    def clip_position(self, min_length: int, max_length: int, min_width: int, max_width: int):
-        self.position[0] = np.clip(self.position[0], min_length, max_length)
-        self.position[1] = np.clip(self.position[1], min_width, max_width)
-    
+    # def clip_position(self, min_length: int, max_length: int, min_width: int, max_width: int):
+    #     self.position[0] = np.clip(self.position[0], min_length, max_length)
+    #     self.position[1] = np.clip(self.position[1], min_width, max_width)
+        
+    def clip_position(self, min_length: int, max_length: int, min_width: int, max_width: int, 
+                    restitution: float = 1.0, goal_min_y: int = None, goal_max_y: int = None):
+
+        ball_x, ball_y = self.position
+
+        # Check if ball is inside the goal area (y-range)
+        in_goal_y = goal_min_y is not None and goal_max_y is not None and goal_min_y <= ball_y <= goal_max_y
+
+        # If the ball crosses the goal line and is inside the goal area, do NOT bounce
+        if (ball_x + self.radius <= min_length or ball_x - self.radius >= max_length) and in_goal_y:
+            return  
+
+        # Left wall bounce
+        if ball_x - self.radius <= min_length:
+            self.position[0] = min_length + self.radius
+            if self.bounceable:
+                self.velocity[0] = -self.velocity[0] * restitution
+
+        # Right wall bounce
+        elif ball_x + self.radius >= max_length:
+            self.position[0] = max_length - self.radius
+            if self.bounceable:
+                self.velocity[0] = -self.velocity[0] * restitution
+
+        # Top wall bounce
+        if ball_y - self.radius <= min_width:
+            self.position[1] = min_width + self.radius
+            if self.bounceable:
+                self.velocity[1] = -self.velocity[1] * restitution
+
+        # Bottom wall bounce
+        elif ball_y + self.radius >= max_width:
+            self.position[1] = max_width - self.radius
+            if self.bounceable:
+                self.velocity[1] = -self.velocity[1] * restitution
+
     def clip_velocity(self, max_speed: float):
         self.velocity = self.velocity / self.get_speed() * max_speed
         
@@ -26,26 +63,28 @@ class Object():
         self.velocity = self.velocity * friction_factor
         self.angular_velocity = self.angular_velocity * angular_friction_factor
         
-    def act(self, acceleration: Tuple[float, float], angular_acceleration: float, dt: float, max_speed: float, max_angular_speed: float, friction_factor: float, angular_friction_factor: float, min_length: int, max_length: int, min_width: int, max_width: int):
+    def act(self, acceleration: Tuple[float, float], angular_acceleration: float, dt: float, max_speed: float, max_angular_speed: float, friction_factor: float, angular_friction_factor: float, min_length: int, max_length: int, min_width: int, max_width: int, goal_min_y: int = None, goal_max_y: int = None):
         
         acceleration = np.array(acceleration)
         self.velocity = self.velocity + dt * acceleration
         self.angular_velocity = self.angular_velocity + dt * angular_acceleration
+        
         speed = self.get_speed()
         if max_speed and speed != 0 and speed > max_speed:
             self.clip_velocity(max_speed)
         if max_angular_speed:
             self.clip_angular_velocity(max_angular_speed)
+
         if friction_factor and angular_friction_factor:
             self.apply_friction(friction_factor, angular_friction_factor)
         
         self.position = self.position + dt * self.velocity
-        self.clip_position(min_length, max_length, min_width, max_width)
-        self.rotation = self.rotation + dt * self.angular_velocity
+        self.clip_position(min_length, max_length, min_width, max_width, goal_min_y=goal_min_y, goal_max_y=goal_max_y)
+        self.orientation = self.orientation + dt * self.angular_velocity
         
         
     def __str__(self):
-        return f"Object(radius={self.radius}, position={self.position}, velocity={self.velocity}, rotation={self.rotation}, angular_velocity={self.angular_velocity})"
+        return f"Object(radius={self.radius}, position={self.position}, velocity={self.velocity}, orientation={self.orientation}, angular_velocity={self.angular_velocity})"
     
 class Ball():
     def __init__(self, object: Object):

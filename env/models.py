@@ -17,7 +17,7 @@ class Dimensions(BaseModel):
 
 class Physics(BaseModel):
     player_max_speed: float
-    player_max_rotation: float
+    player_max_angular_speed: float
     friction_factor: float
     angular_friction_factor: float
     air_resistance: float

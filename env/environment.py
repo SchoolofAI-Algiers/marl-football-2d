@@ -3,7 +3,7 @@ import pygame
 from env.utils import get_dimensions, get_physics, get_simulation
 from env.models import GameState
 from env.engine import Object, Player, Ball, distance
-from config import WHITE, GREEN, ORANGE, RENDER_SCALE, PADDING
+from config import BLACK, WHITE, GREEN, ORANGE, RED, BLUE, RENDER_SCALE, PADDING
 
 class FootballEnv:
     def __init__(self, team_size=2):
@@ -20,13 +20,14 @@ class FootballEnv:
                 radius=self.dimensions.ball_radius,
                 position=(self.dimensions.stadium_length / 2, self.dimensions.stadium_width / 2),
                 velocity=(0, 0),
-                rotation=0.0,
-                angular_velocity=0.0
+                orientation=0.0,
+                angular_velocity=0.0,
+                bounceable=True
             )
         )
         
         self.game_state = GameState(
-            game_time=0.0,
+            game_time=0,
             score=[0, 0],
             possession=None,
             possession_time=[0.0, 0.0]
@@ -37,14 +38,14 @@ class FootballEnv:
     def _init_players(self):
         """
         Positions players neatly on the field:
-        - Team 0 (left side) at x ~ 20% of field_length
-        - Team 1 (right side) at x ~ 80% of field_length
+        - Team 0 (left side) at x ~ 40% of field_length
+        - Team 1 (right side) at x ~ 60% of field_length
         - Spaced along the center on the y-axis
         """
         self.players = []
         for i in range(self.num_players):
             team = 0 if i < self.team_size else 1
-            x = 0.2 * self.dimensions.stadium_length if team == 0 else 0.8 * self.dimensions.stadium_length
+            x = 0.4 * self.dimensions.stadium_length if team == 0 else 0.6 * self.dimensions.stadium_length
             
             # Distribute players around the center on y-axis
             idx_within_team = i % self.team_size
@@ -59,7 +60,7 @@ class FootballEnv:
                     radius=self.dimensions.player_radius,
                     position=(x, y),
                     velocity=(0, 0),
-                    rotation=orientation,
+                    orientation=orientation,
                     angular_velocity=0.0
                 ),
                 team=team
@@ -71,7 +72,7 @@ class FootballEnv:
             state += [
                 player.object.position[0], player.object.position[1],
                 player.object.velocity[0], player.object.velocity[1],
-                player.object.rotation, player.object.angular_velocity,
+                player.object.orientation, player.object.angular_velocity,
                 player.team
             ]
         
@@ -114,26 +115,30 @@ class FootballEnv:
     def step(self, actions):
         """
         One simulation step:
-        - Applies actions to players (acceleration, angular acceleration, kick)
+        - Applies actions to players (acceleration, angular acceleration, force power, force angle)
         - Updates positions and ball dynamics
         - Checks for goals and updates score/rewards
         - Returns (state, rewards, done, info)
         """
         if self.done:
             return self._get_state(), [0] * self.num_players, True, {}
-            
+
         rewards = [0.0] * self.num_players
-        
+
         # 1. First update ALL players' movements
         for i, player in enumerate(self.players):
-            ax, ay, alpha, kx, ky = actions[i]
-            
+            acceleration, angular_acceleration, kicking_force, kicking_angle = actions[i]
+
+            # Convert acceleration to x/y using player's orientation
+            ax = np.cos(player.object.orientation) * acceleration
+            ay = np.sin(player.object.orientation) * acceleration
+
             player.object.act(
-                acceleration=(ax, ay),
-                angular_acceleration=alpha,
+                acceleration=(ax, ay),  
+                angular_acceleration=angular_acceleration,  
                 dt=self.simulation.dt,
                 max_speed=self.physics.player_max_speed,
-                max_angular_speed=self.physics.player_max_rotation,
+                max_angular_speed=self.physics.player_max_angular_speed,
                 friction_factor=self.physics.friction_factor,
                 angular_friction_factor=self.physics.angular_friction_factor,
                 min_length=0,
@@ -141,23 +146,32 @@ class FootballEnv:
                 min_width=0,
                 max_width=self.dimensions.stadium_width
             )
-        
+
         # 2. Then check for ball contacts AFTER all players moved
-        ball_acceleration = [0.0, 0.0]
+        ball_acceleration = np.array([0.0, 0.0])
         possession = None
-        sum_radii = (self.dimensions.player_radius 
-                    + self.dimensions.ball_radius)
-        
+        sum_radii = self.dimensions.player_radius + self.dimensions.ball_radius
+
         for i, player in enumerate(self.players):
             dist_to_ball = distance(player.object, self.ball.object)
-            
-            # Use <= for contact detection
-            if dist_to_ball <= sum_radii:  
-                # Apply this player's kick force
-                kx, ky = actions[i][3], actions[i][4]
-                ball_acceleration[0] += kx
-                ball_acceleration[1] += ky
-                possession = player.team  # Last contacting player gets possession
+
+            if dist_to_ball <= sum_radii:  # Contact detected
+                # Convert force angle to absolute angle
+                kick_direction = player.object.orientation + kicking_angle
+
+                # Convert force power to x/y using the force direction
+                kick_x = np.cos(kick_direction) * kicking_force
+                kick_y = np.sin(kick_direction) * kicking_force
+
+                # Apply the kick force to the ball
+                ball_acceleration += np.array([kick_x, kick_y])
+                possession = player.team  # Last touching player gets possession
+
+        # Check for goals and update score/rewards
+        goal_min_y = (self.dimensions.stadium_width - self.dimensions.goal_width) / 2
+        goal_max_y = goal_min_y + self.dimensions.goal_width
+
+        ball_x, ball_y = self.ball.object.position
         
         # 3. Apply accumulated acceleration to ball
         self.ball.object.act(
@@ -171,31 +185,38 @@ class FootballEnv:
             min_length=0,
             max_length=self.dimensions.stadium_length,
             min_width=0,
-            max_width=self.dimensions.stadium_width
+            max_width=self.dimensions.stadium_width,
+            goal_min_y=goal_min_y,
+            goal_max_y=goal_max_y
         )
-        
+
         # Update possession state
         self.game_state.possession = possession
         if possession is not None:
             self.game_state.possession_time[possession] += self.simulation.dt
-        
-        # Check for goals
-        if self.ball.object.position[0] < 0:
+
+
+        # Check if ball is inside the goal area (y-range)
+        is_in_goal_y_range = goal_min_y <= ball_y <= goal_max_y
+
+        # Left goal (Team 1 scores)
+        if ball_x < 0 and is_in_goal_y_range:
             self.game_state.score[1] += 1
             self.reset(on_goal=True)
             for i, player in enumerate(self.players):
                 rewards[i] = 1.0 if player.team == 1 else -1.0
 
-        elif self.ball.object.position[0] > self.dimensions.stadium_length:
+        # Right goal (Team 0 scores)
+        elif ball_x > self.dimensions.stadium_length and is_in_goal_y_range:
             self.game_state.score[0] += 1
             self.reset(on_goal=True)
             for i, player in enumerate(self.players):
                 rewards[i] = 1.0 if player.team == 0 else -1.0
-        
+
         # Update game state
         self.game_state.game_time += self.simulation.dt
         self.done = self.game_state.game_time >= self.simulation.max_game_time
-        
+
         return self._get_state(), rewards, self.done, {}
 
     def render(self):
@@ -211,7 +232,7 @@ class FootballEnv:
             pygame.init()
             self.scale = RENDER_SCALE
             self.width_pixels = (self.dimensions.stadium_length + PADDING) * self.scale
-            self.height_pixels = (self.dimensions.stadium_width + PADDING) * self.scale
+            self.height_pixels = (self.dimensions.stadium_width + 1.5 * PADDING) * self.scale
             self.screen = pygame.display.set_mode((self.width_pixels, self.height_pixels))
             pygame.display.set_caption("2D Football Environment")
 
@@ -222,13 +243,22 @@ class FootballEnv:
         
         def draw_circle(x, y, radius, color=WHITE):
             pygame.draw.circle(self.screen, color, (int(x), int(y)), int(radius))
+            
+        # Draw leaderboard background
+        pygame.draw.rect(self.screen, BLACK, (0, 0, self.width_pixels, 0.375 * PADDING * self.scale))
+        
+        # Render leaderboard (score, time), centered
+        font = pygame.font.SysFont("Consolas", int(0.25 * PADDING * self.scale))
+        score_text = f"A {self.game_state.score[0]} - {self.game_state.score[1]} B  |  Time: {self.game_state.game_time:.1f} / {self.simulation.max_game_time}"
+        text_surface = font.render(score_text, True, WHITE)
+        self.screen.blit(text_surface, ((self.width_pixels - text_surface.get_width()) // 2, 0.375 / 2 * PADDING * self.scale - text_surface.get_height() // 2))
 
+        # Draw field boundary 
         field_length_px = self.dimensions.stadium_length * self.scale
         field_width_px = self.dimensions.stadium_width * self.scale
         offset_x = (self.width_pixels - field_length_px) // 2
         offset_y = (self.height_pixels - field_width_px) // 2
 
-        # Draw field boundary
         draw_rectangle(offset_x, offset_y, field_length_px, field_width_px)
         
         # Draw center line and circle
@@ -272,8 +302,18 @@ class FootballEnv:
         for player in self.players:
             px = offset_x + player.object.position[0] * self.scale
             py = offset_y + player.object.position[1] * self.scale
-            color = (255, 0, 0) if player.team == 0 else (0, 0, 255)
+            color = RED if player.team == 0 else BLUE
             draw_circle(px, py, self.dimensions.player_radius * self.scale, color)
+            
+            # Calculate the position of the small white dot
+            dot_offset = self.dimensions.player_radius * self.scale * 0.5  # Move dot halfway to the edge
+            angle = player.object.orientation  # Assuming orientation is in radians
+
+            dot_x = px + np.cos(angle) * dot_offset
+            dot_y = py + np.sin(angle) * dot_offset
+
+            # Draw the white dot
+            draw_circle(dot_x, dot_y, self.dimensions.player_radius * self.scale * 0.3, WHITE)
 
         # Draw ball
         ball_x = offset_x + self.ball.object.position[0] * self.scale

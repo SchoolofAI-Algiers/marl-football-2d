@@ -20,12 +20,15 @@ PENALTY_SPOT_RADIUS = 0.25
 
 # player attributes
 PLAYER_RADIUS = 0.75
-PLAYER_MAX_SPEED = 25
-PLAYER_MAX_ROTATION = np.pi
-PLAYER_MAX_KICKING_FORCE = 10
+
+PLAYER_MAX_SPEED = 5  # Max sprint speed (m/s)
+PLAYER_MAX_ACCELERATION = 5  # Max acceleration (m/s²)
+PLAYER_MAX_ANGULAR_SPEED = np.pi  # Max turning speed (rad/s)
+PLAYER_MAX_ANGULAR_ACCELERATION = np.pi  # Max turning acceleration (rad/s²)
+PLAYER_MAX_KICKING_FORCE = 100  # Max kicking acceleration (m/s²)
 
 # ball attributes
-BALL_RADIUS = 0.5
+BALL_RADIUS = 0.4
 
 # simulation attributes
 DT = 0.1
@@ -35,9 +38,12 @@ FPS = 60
 # visual attributes
 RENDER_SCALE = 12
 PADDING = 10
+BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GREEN = (34, 139, 34)
 ORANGE = (255, 165, 0)
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
 
 # physics attributes
 FRICTION_FACTOR = 0.9
