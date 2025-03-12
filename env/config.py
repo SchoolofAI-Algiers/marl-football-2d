@@ -1,10 +1,23 @@
 import numpy as np
 
 # stadium attributes
-STADIUM_LENGTH = 100
-PLAYERS_TO_LENGTH_RATIO = 1/22
-LENGTH_TO_WIDTH_RATIO = 6/10
-
+# stadium attributes
+# stadium
+STADIUM_LENGTH = 105
+STADIUM_WIDTH = 68
+# center
+CENTER_CIRCLE_RADIUS = 9.15
+# penalty area
+PENALTY_AREA_LENGTH = 16
+PENALTY_AREA_WIDTH = 40
+# goal area
+GOAL_AREA_LENGTH = 6
+GOAL_AREA_WIDTH = 20
+# goal
+GOAL_WIDTH = 12
+# penalty spot
+PENALTY_SPOT_DISTANCE = 11
+PENALTY_SPOT_RADIUS = 0.25
 # player attributes
 PLAYER_RADIUS = 1
 PLAYER_MAX_SPEED = 20

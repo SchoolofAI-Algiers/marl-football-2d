@@ -56,7 +56,10 @@ class SteeringBehaviors:
     @staticmethod
     def seek(player: MovementInput, target: MovementInput, desired_speed: float = None) -> MovementOutput:
         # Calculate direction to target
-        direction = target.position - player.position
+        player_pos = np.array(player.position)
+        target_pos = np.array(target.position)
+
+        direction = target_pos - player_pos
         
         # Normalize the direction vector (make it unit length)
         if np.linalg.norm(direction) > 0:
@@ -79,7 +82,10 @@ class SteeringBehaviors:
     
     @staticmethod
     def flee(player: MovementInput, target: MovementInput) -> MovementOutput:
-        direction = player.position - target.position
+        player_pos = np.array(player.position)
+        target_pos = np.array(target.position)
+
+        direction = target_pos - player_pos
         if np.linalg.norm(direction) > 0:
             direction = (direction / np.linalg.norm(direction)) * config.PLAYER_MAX_SPEED
         acceleration = direction - player.velocity
@@ -87,7 +93,10 @@ class SteeringBehaviors:
 
     @staticmethod
     def arrive(player: MovementInput, target: MovementInput) -> MovementOutput:
-        direction = target.position - player.position
+        player_pos = np.array(player.position)
+        target_pos = np.array(target.position)
+
+        direction = target_pos - player_pos
         distance = np.linalg.norm(direction)
 
         if distance < config.TARGET_RADIUS:
@@ -105,7 +114,11 @@ class SteeringBehaviors:
 
     @staticmethod
     def pursue(player: MovementInput, target: MovementInput) -> MovementOutput:
-        direction = target.position - player.position
+        player_pos = np.array(player.position)
+        target_pos = np.array(target.position)
+
+        direction = target_pos - player_pos
+        
         distance = np.linalg.norm(direction)
         speed = np.linalg.norm(player.velocity)
 
@@ -119,7 +132,10 @@ class SteeringBehaviors:
 
     @staticmethod
     def evade(player: MovementInput, target: MovementInput) -> MovementOutput:
-        direction = player.position - target.position
+        player_pos = np.array(player.position)
+        target_pos = np.array(target.position)
+
+        direction = target_pos - player_pos
         distance = np.linalg.norm(direction)
         speed = np.linalg.norm(player.velocity)
 
@@ -155,9 +171,14 @@ class SteeringBehaviors:
         first_relative_vel = None
         first_min_separation = None
         first_distance = None
+
+        input_pos = np.array(movement_input.position)
+        input_vel= np.array(movement_input.velocity)
+        target_pos = np.array(target.position)
+
         
-        relative_pos = target.position - movement_input.position
-        relative_vel = target.velocity - movement_input.velocity
+        relative_pos = target.position - input_pos
+        relative_vel = target.velocity - input_vel
   
         relative_speed = np.linalg.norm(relative_vel)
         if relative_speed == 0:
@@ -246,7 +267,10 @@ class SteeringBehaviors:
             target rotation
         """
         # Calculate direction vector (target - player)
-        direction = target.position - player.position
+        player_pos = np.array(player.position)
+        target_pos = np.array(target.position)
+
+        direction = target_pos - player_pos
 
         # Normalize the direction vector
         direction_normalized = direction / np.linalg.norm(direction)
@@ -272,17 +296,21 @@ class SteeringBehaviors:
     @staticmethod
     def blend_steering_behaviors(actions: list, player: MovementInput, target: MovementInput,neighbors:list) -> MovementOutput:
         blended_output = MovementOutput(linear=np.array((0.0, 0.0)), angular=0.0)
+        player_pos = player.object if hasattr(player, 'object') else player
+
+        # Check if target has .object attribute, otherwise use .position
+        target_pos = target.object if hasattr(target, 'object') else target
 
         # Apply selected movements
         for behavior, weight in actions:
-            output = behavior(player.object, target.object)
+            output = behavior(player_pos, target_pos)
             blended_output.linear += np.dot(output.linear , weight)
             blended_output.angular += np.dot(output.angular , weight)
 
         # Always apply collision avoidance, separation, and obstacle avoidance
         #obstacle_output=SteeringBehaviors.obstacle_avoidance(player.object)
-        separate_output=SteeringBehaviors.separation(player.object,neighbors)
-        collision_output=SteeringBehaviors.collision_avoidance(player.object,target.object)
+        separate_output=SteeringBehaviors.separation(player_pos,neighbors)
+        collision_output=SteeringBehaviors.collision_avoidance(player_pos,target_pos)
 
         avoidance_behaviors = [
             #obstacle_output,

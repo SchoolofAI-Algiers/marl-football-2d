@@ -1,11 +1,13 @@
 import numpy as np
 import math
+import random
 import pygame
 from env.utils import get_dimensions, get_physics, get_simulation
 from env.models import GameState,MovementInput,MovementOutput
 from env.engine import Object, Player, Ball, distance
 from env.steering import SteeringBehaviors as steering
 from env.config import CATCH_RADIUS,TACKLE_RADIUS
+import env.config as config
 
 class FootballEnv:
     def __init__(self, team_size=2):
@@ -189,6 +191,61 @@ class FootballEnv:
             playerOutput = steering.blend_steering_behaviors(actions, object, target, neighbors)
             ballOutput = MovementOutput(linear=[0.0, 0.0], angular=0.0)
             rotation = object.object.rotation
+
+        elif action=="shoot":
+            self.scale = 8
+            
+
+            def get_random_goal_target(goal_x, goal_y, goal_width, goal_height):
+                """
+                Returns a random point within the goal's boundaries.
+                """
+                target_x = goal_x + random.uniform(5, goal_width-5)  # Random x within goal width
+                target_y = goal_y + random.uniform(5, goal_height-5)  # Random y within goal height
+                return (target_x, target_y)
+
+            # find the goals positions:
+            field_length = self.dimensions.stadium_length
+            field_width = self.dimensions.stadium_width
+            # Goal dimensions 
+            goal_width = self.dimensions.goal_area_width
+            goal_height = self.dimensions.goal_area_length
+         
+            offset = (field_width -goal_width) // 2
+            
+
+
+            # Left goal boundaries
+            left_goal_x = 0  # Left goal's x position
+            left_goal_y = goal_height  # Left goal's top y position
+            
+            # Right goal boundaries
+            right_goal_x = field_length - goal_height  # Right goal's x position
+            right_goal_y = offset # Right goal's top y position
+            
+            if object.team==0:
+                # Team 0 shoots at the right goal
+                goal_x = right_goal_x
+                goal_y = right_goal_y
+            else:
+                # Team 1 shoots at the left goal
+                goal_x = left_goal_x
+                goal_y = left_goal_y
+
+            actions = [
+                (steering.seek, 1.0),
+                (steering.arrive, 0.5)  
+            ]
+            # the point chosen should be converted to array
+            goal_point=get_random_goal_target(goal_x,goal_y,goal_width,goal_height)
+            goal_point=np.array(goal_point)
+            
+            goal_target=MovementInput(position=goal_point,velocity=[0.0,0.0],rotation=0.0,angular_velocity=0.0)
+
+            ballOutput=steering.blend_steering_behaviors(actions,target,goal_target,neighbors)
+            playerOutput=MovementOutput(linear=[0.0, 0.0], angular=0.0)
+
+            rotation=0.0
 
         return [playerOutput.linear[0], playerOutput.linear[1], playerOutput.angular ,ballOutput.linear[0],ballOutput.linear[1] ,rotation]
 
@@ -412,11 +469,5 @@ class FootballEnv:
         by = offset_y + self.ball.object.position[1] * self.scale
         pygame.draw.circle(self.screen, (255, 165, 0), (int(bx), int(by)), int(self.dimensions.ball_radius * self.scale))
 
-        # Draw facing direction
-        # facing_length = 20  # Standard length for the facing direction line
-        # ball_rotation = self.ball.object.rotation  # Directly use the rotation attribute
-        # end_x = bx + facing_length * math.cos(ball_rotation)
-        # end_y = by - facing_length * math.sin(ball_rotation)  # Subtract because y-axis is inverted in Pygame
-        # pygame.draw.line(self.screen, (255, 255, 255), (bx, by), (end_x, end_y), 2)
-
+        
         pygame.display.flip()
