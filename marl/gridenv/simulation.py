@@ -10,6 +10,9 @@ env = FootballEnv(team_size=3, size="S")
 action_space = env.action_space
 done = False
 
+env.render()
+pygame.time.delay(STEP_DELAY)
+
 while not done:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:

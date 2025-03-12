@@ -19,7 +19,12 @@ class FootballEnv:
         self._init_positions()
         
         self.ball_owner = random.choice(["A", "B"]), random.randint(0, self.team_size - 1)
-        self.action_space = ["N", "S", "E", "W", "NE", "NW", "SE", "SW", "STAY"]
+        self.ball_position = self.positions[self.ball_owner[0]][self.ball_owner[1]]
+        self.ball_direction = None  # Ball is stationary at the start
+        self.action_space = [
+            "N", "S", "E", "W", "NE", "NW", "SE", "SW", "STAY",
+            "KICK_N", "KICK_S", "KICK_E", "KICK_W", "KICK_NE", "KICK_NW", "KICK_SE", "KICK_SW"
+        ]
         
         self.score = {"A": 0, "B": 0}
         self.done = False
@@ -36,8 +41,8 @@ class FootballEnv:
             goal_x = [i for i in range(self.height//2-1, self.height//2 + 2)]
         
         self.goals = {
-            "A": [(i, 0) for i in goal_x],
-            "B": [(i, self.width - 1) for i in goal_x]
+            "A": [(i, self.width - 1) for i in goal_x],
+            "B": [(i, 0) for i in goal_x]
         }
 
         self.non_accessible_cells = [(i, 0) for i in range(self.height)]
@@ -66,6 +71,10 @@ class FootballEnv:
             self.timestep = 0
         else:
             self.ball_owner = (conceding_team, random.randint(0, self.team_size - 1))
+
+        self.ball_position = self.positions[self.ball_owner[0]][self.ball_owner[1]]
+        self.ball_direction = None
+        
         return self._get_state()
 
     def step(self, actions):
@@ -79,6 +88,11 @@ class FootballEnv:
             "NE": (-1, 1), "NW": (-1, -1), "SE": (1, 1), "SW": (1, -1),
             "STAY": (0, 0)
         }
+        
+        kicks = {
+            "KICK_N": (-1, 0), "KICK_S": (1, 0), "KICK_E": (0, 1), "KICK_W": (0, -1),
+            "KICK_NE": (-1, 1), "KICK_NW": (-1, -1), "KICK_SE": (1, 1), "KICK_SW": (1, -1)
+        }
 
         new_positions = {"A": [], "B": []}
 
@@ -86,40 +100,90 @@ class FootballEnv:
         for team in ["A", "B"]:
             for i in range(self.team_size):
                 action = actions[team][i]
-                new_pos = (self.positions[team][i][0] + moves[action][0],
-                           self.positions[team][i][1] + moves[action][1])
+                current_pos = self.positions[team][i]
 
-                # Check if new position is valid
-                if (0 <= new_pos[0] < self.grid_size[0] and
-                    0 <= new_pos[1] < self.grid_size[1] and
-                    new_pos not in self.non_accessible_cells):
-                    new_positions[team].append(new_pos)
+                if self.ball_owner == (team, i):
+                    if action in kicks:
+                        self.ball_direction = kicks[action]
+                        self.ball_owner = None
+                        new_positions[team].append(current_pos)  
+                    else:
+                        new_pos = (current_pos[0] + moves[action][0], current_pos[1] + moves[action][1])
+
+                        if (0 <= new_pos[0] < self.grid_size[0] and
+                            0 <= new_pos[1] < self.grid_size[1] and
+                            new_pos not in self.non_accessible_cells):
+                            new_positions[team].append(new_pos)
+                            self.ball_position = new_pos
+                        else:
+                            new_positions[team].append(current_pos)  
+                            self.ball_position = current_pos  
+
+                elif action in kicks:
+                    new_positions[team].append(current_pos)
+
                 else:
-                    new_positions[team].append(self.positions[team][i])  # Stay in place if invalid move
+                    new_pos = (current_pos[0] + moves[action][0], current_pos[1] + moves[action][1])
 
-        # Collision handling
-        ball_owner_team, ball_owner_idx = self.ball_owner
-        other_team = "B" if ball_owner_team == "A" else "A"
-        for i, position in enumerate(new_positions[other_team]):
-            if position == new_positions[ball_owner_team][ball_owner_idx]:
-                self.ball_owner = (other_team, i)
-                # new_positions[ball_owner_team][ball_owner_idx] = self.positions[ball_owner_team][ball_owner_idx]
+                    if (0 <= new_pos[0] < self.grid_size[0] and
+                        0 <= new_pos[1] < self.grid_size[1] and
+                        new_pos not in self.non_accessible_cells):
+                        new_positions[team].append(new_pos)
+                    else:
+                        new_positions[team].append(current_pos) 
+
+        # Move the ball if it is free
+        if self.ball_direction:
+            new_ball_pos = (self.ball_position[0] + self.ball_direction[0],
+                            self.ball_position[1] + self.ball_direction[1])
+
+            # Check if the new ball position is valid
+            if (0 <= new_ball_pos[0] < self.grid_size[0] and
+                0 <= new_ball_pos[1] < self.grid_size[1] and
+                new_ball_pos not in self.non_accessible_cells):
+                self.ball_position = new_ball_pos
+            else:
+                self.ball_direction = None  # Stop ball if it hits a wall
+
+        # Collision handling (Ball Stealing)
+        if self.ball_owner:
+            ball_owner_team, ball_owner_idx = self.ball_owner
+            ball_owner_pos = new_positions[ball_owner_team][ball_owner_idx]
+            other_team = "B" if ball_owner_team == "A" else "A"
+            
+            # Find all opponents trying to steal
+            stealers = [i for i, pos in enumerate(new_positions[other_team]) if pos == ball_owner_pos]
+
+            if stealers:
+                if random.choice([True, False]):  # 50% chance of stealing
+                    self.ball_owner = (other_team, random.choice(stealers))
+                    self.ball_direction = None  # Stop autonomous movement
+
+        # If the ball is free, allow claiming
+        elif self.ball_owner is None:
+            claimers = []  # List of players stepping on the ball
+
+            for team in ["A", "B"]:
+                for i, pos in enumerate(new_positions[team]):
+                    if pos == self.ball_position:
+                        claimers.append((team, i))
+
+            if claimers:
+                self.ball_owner = random.choice(claimers)  # Randomly choose one player to claim the ball
+                self.ball_direction = None  # Stop autonomous movement
 
         # Update positions
         self.positions = new_positions
 
-        # Check for goals, own as well
-        for team in ["A", "B"]:
-            other_team = "B" if team == "A" else "A"
-            for i in range(self.team_size):
-                if self.positions[team][i] in self.goals[team] and self.ball_owner == (team, i):
-                    reward = {team: 1, other_team: -1}
-                    self.score[team] += 1
-                    return self._get_state(), reward, self.done, {'goal': True, 'conceding_team': other_team}
-                if self.positions[team][i] in self.goals[other_team] and self.ball_owner == (team, i):
-                    reward = {team: -1, other_team: 1}
-                    self.score[other_team] += 1
-                    return self._get_state(), reward, self.done, {'goal': True, 'conceding_team': team}
+        # Check if the ball enters a goal
+        if self.ball_position in self.goals["A"]:
+            reward = {"A": -1, "B": 1}
+            self.score["B"] += 1
+            return self._get_state(), reward, self.done, {'goal': True, 'conceding_team': "A"}
+        elif self.ball_position in self.goals["B"]:
+            reward = {"A": 1, "B": -1}
+            self.score["A"] += 1
+            return self._get_state(), reward, self.done, {'goal': True, 'conceding_team': "B"}
 
         return self._get_state(), {"A": 0, "B": 0}, self.done, {'goal': False}
 
@@ -183,6 +247,14 @@ class FootballEnv:
         font = pygame.font.SysFont("Arial", 15)
         offset = 20
         offsets = [(0, 0), (0, offset), (0, -offset), (offset, 0), (-offset, 0), (offset, offset), (-offset, -offset), (offset, -offset), (-offset, offset)]
+        
+        # Draw free ball with a direction line
+        if self.ball_owner is None:
+            x, y = self.ball_position
+            if self.ball_direction:
+                line_length = 15
+                pygame.draw.line(self.screen, WHITE, (y * CELL_SIZE + CELL_SIZE // 2, x * CELL_SIZE + CELL_SIZE // 2), (y * CELL_SIZE + CELL_SIZE // 2 + self.ball_direction[1] * line_length, x * CELL_SIZE + CELL_SIZE // 2 + self.ball_direction[0] * line_length), 3)
+            self.screen.blit(self.soccer_ball_img, (y * CELL_SIZE + CELL_SIZE // 2 - 10, x * CELL_SIZE + CELL_SIZE // 2 - 10))
         
         # Draw players
         for i in range(self.team_size):
