@@ -2,10 +2,9 @@
 ASSETS_PATH = './marl/gridenv/assets'
 
 # Colors 
-A_COLOR = (238,161,205)  # baby pink 
-B_COLOR = (194,195,255)  # lavender purple
-GREEN = (0, 159, 63)  
-BLUE = (173,216,230)   
+A_COLOR = (255,0,0)  # red
+B_COLOR = (0,0,255)  # blue
+GREEN = (34, 139, 34)
 GRAY = (211, 211, 211)
 WHITE = (255, 255, 255)  
 
@@ -18,10 +17,9 @@ GRID_SIZES = {
 DEFAULT_SIZE = "S"
 GRID_SIZE = GRID_SIZES[DEFAULT_SIZE]
 CELL_SIZE = 100
-# WIDTH = GRID_SIZE[1] * CELL_SIZE
-# HEIGHT = GRID_SIZE[0] * CELL_SIZE
 
 # Simulation settings
 FPS = 30
-STEP_DELAY = 500
+MAX_TIMESTEP = 100
+STEP_DELAY = 1000
 GOAL_DELAY = 1000
