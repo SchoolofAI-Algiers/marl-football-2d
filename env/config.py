@@ -25,7 +25,9 @@ PLAYER_MAX_SPEED = 5  # Max sprint speed (m/s)
 PLAYER_MAX_ACCELERATION = 5  # Max acceleration (m/s²)
 PLAYER_MAX_ANGULAR_SPEED = np.pi  # Max turning speed (rad/s)
 PLAYER_MAX_ANGULAR_ACCELERATION = np.pi  # Max turning acceleration (rad/s²)
-PLAYER_MAX_KICKING_FORCE = 100  # Max kicking acceleration (m/s²)
+PLAYER_MAX_KICKING_FORCE = 2  # Max kicking acceleration (m/s²)
+
+# run (1-10), pass (20-100), shoot (200-500), action (continuous), 1 - 500, mean, variance, discrete action (kick, pass, shoot) -> [-1, 1] * action_type_max_force
 
 # ball attributes
 BALL_RADIUS = 0.4
