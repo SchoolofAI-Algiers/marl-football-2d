@@ -49,7 +49,7 @@ class FootballEnv:
         self.players = []
         for i in range(self.num_players):
             team = 0 if i < self.team_size else 1
-            x = 0.6 * self.dimensions.stadium_length if team == 0 else 0.4 * self.dimensions.stadium_length
+            x = 0.4 * self.dimensions.stadium_length if team == 0 else 0.6 * self.dimensions.stadium_length
             
             # Distribute players around the center on y-axis
             idx_within_team = i % self.team_size
