@@ -10,6 +10,7 @@ class Dimensions(BaseModel):
     goal_area_length: float
     goal_area_width: float
     goal_width: float
+    goal_depth: float
     penalty_spot_distance: float
     penalty_spot_radius: float
     player_radius: float
@@ -18,16 +19,20 @@ class Dimensions(BaseModel):
 class Physics(BaseModel):
     player_max_speed: float
     player_max_angular_speed: float
-    friction_factor: float
+    player_friction_factor: float
+    ball_friction_factor: float
     angular_friction_factor: float
-    air_resistance: float
+    ball_max_speed: float
+    kick_cooldown: float
     
 class Simulation(BaseModel):
     dt: float
     max_game_time: int
 
 class GameState(BaseModel):
-    game_time: int
+    game_time: float
     score: List[int]
     possession: Union[int, None]
-    possession_time: List[int]
+    possession_time: List[float]
+    last_kicker: Union[int, None]
+    last_kick_time: Union[float, None]
