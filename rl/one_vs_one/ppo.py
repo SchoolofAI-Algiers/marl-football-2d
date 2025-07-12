@@ -23,6 +23,12 @@ class PPOConfig(BaseModel):
     mini_batch_size: int = 128
     epochs: int = 8
 
+class PPOMetrics(BaseModel):
+    policy_loss: float
+    value_loss: float
+    entropy: float
+    loss: float
+
 class ActorCritic(nn.Module):
     def __init__(self, obs_dim: int, act_dim: int):
         super().__init__()
@@ -90,7 +96,7 @@ class PPOAgent:
             returns.insert(0, gae + values[step])
         return returns
 
-    def update(self, buffer: Dict[str, List]):
+    def update(self, buffer: Dict[str, List]) -> PPOMetrics:
         obs = torch.FloatTensor(np.array(buffer['obs'])).to(self.device)
         actions = torch.FloatTensor(np.array(buffer['actions'])).to(self.device)
         old_log_probs = torch.FloatTensor(buffer['log_probs']).to(self.device)
@@ -101,6 +107,11 @@ class PPOAgent:
 
         # Inverse rescale actions to raw Tanh range [-1, 1]
         raw_actions = 2 * (actions - self.low) / (self.high - self.low) - 1.0
+        
+        policy_losses = []
+        value_losses = []
+        entropies = []
+        total_losses = []
 
         for _ in range(self.config.epochs):
             idxs = np.arange(len(obs))
@@ -126,7 +137,20 @@ class PPOAgent:
                 value_loss = (mb_returns - value.squeeze()).pow(2).mean()
 
                 loss = policy_loss + self.config.vf_coef * value_loss - self.config.ent_coef * entropy
+                
                 self.optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.policy.parameters(), self.config.max_grad_norm)
                 self.optimizer.step()
+                
+                policy_losses.append(policy_loss.item())
+                value_losses.append(value_loss.item())
+                entropies.append(entropy.item())
+                total_losses.append(loss.item())
+                
+        return PPOMetrics(
+            policy_loss=np.mean(policy_losses),
+            value_loss=np.mean(value_losses),
+            entropy=np.mean(entropies),
+            loss=np.mean(total_losses)
+        )

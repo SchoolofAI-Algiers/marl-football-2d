@@ -9,6 +9,12 @@ from rl.one_vs_one.ppo import PPOAgent, PPOConfig
 from rl.one_vs_one.utils import mirror_action, env_to_obs
 
 def train_selfplay_mirrored(total_timesteps: int = 1_280_000):
+    config = PPOConfig()
+    total_episodes = total_timesteps // config.rollout_length 
+    
+    os.makedirs("./models", exist_ok=True)
+    os.makedirs("./models/checkpoint", exist_ok=True)
+    
     env = FootballEnv(team_size=1)
     sample_obs = env.reset()
     obs_dim = env_to_obs(sample_obs).shape[0]
@@ -95,17 +101,25 @@ def train_selfplay_mirrored(total_timesteps: int = 1_280_000):
         buffer.returns = agent.compute_gae(buffer.rewards, buffer.values, buffer.dones)
         buffer.values = buffer.values[:-1]
 
-        agent.update(buffer.__dict__)
+        training_metrics = agent.update(buffer.__dict__)
         buffer.clear()
 
         if episode_count % 5 == 0:
             opponent.policy.load_state_dict(agent.policy.state_dict())
-            print(f"Episode {episode_count}, Timestep {timestep}: Updated opponent policy")
+            print(f"Episode {episode_count} / {total_episodes}: Updated opponent policy")
+            
+        if episode_count % 50 == 0:
+            torch.save({
+                "agent_policy": agent.policy.state_dict(),
+                "opponent_policy": opponent.policy.state_dict(),
+                "timestep": timestep,
+                "episode_count": episode_count,
+            }, f"./models/checkpoint/episode_{episode_count}.pth")
+            print(f"Checkpoint saved at Episode {episode_count}")
 
         if episode_count % 100 == 0:
-            print(f"Episode {episode_count}, Timestep {timestep}")
+            print(f"Episode {episode_count} / {total_episodes}")
 
-    os.makedirs("./models", exist_ok=True)
     torch.save(agent.policy.state_dict(), os.path.join("./models", "ppo_selfplay_mirrored.pt"))
     print("Training completed and model saved!")
 
