@@ -19,7 +19,7 @@ class PPOConfig(BaseModel):
     ent_coef: float = 0.01
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
-    rollout_length: int = 2560
+    rollout_length: int = 5120
     mini_batch_size: int = 128
     epochs: int = 8
 
@@ -28,6 +28,7 @@ class PPOMetrics(BaseModel):
     value_loss: float
     entropy: float
     loss: float
+    mean_return: float
 
 class ActorCritic(nn.Module):
     def __init__(self, obs_dim: int, act_dim: int):
@@ -38,9 +39,19 @@ class ActorCritic(nn.Module):
             nn.Linear(hidden, hidden), nn.Tanh(),
             nn.Linear(hidden, hidden), nn.Tanh()
         )
-        self.actor_mean = nn.Linear(hidden, act_dim)
-        self.critic = nn.Linear(hidden, 1)
-        self.log_std = nn.Parameter(torch.ones(act_dim) * -0.5)  # initial std = exp(-0.5) ≈ 0.6
+
+        self.actor_mean = nn.Sequential(
+            nn.Linear(hidden, hidden),
+            nn.Linear(hidden, act_dim)
+        )
+            
+        self.critic = nn.Sequential(
+            nn.Linear(hidden, hidden),
+            nn.Linear(hidden, 1)
+        )
+        
+        initial_log_std = torch.tensor([-1.0, -2.0, -1.0, -2.0]) # [ acceleration, angular_acc, kicking_force, kicking_angle ]
+        self.log_std = nn.Parameter(initial_log_std)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         h = self.net(x)
@@ -152,5 +163,6 @@ class PPOAgent:
             policy_loss=np.mean(policy_losses),
             value_loss=np.mean(value_losses),
             entropy=np.mean(entropies),
-            loss=np.mean(total_losses)
+            loss=np.mean(total_losses),
+            mean_return=np.mean(returns.cpu().numpy())
         )
