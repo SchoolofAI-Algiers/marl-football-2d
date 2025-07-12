@@ -20,7 +20,7 @@ PENALTY_SPOT_DISTANCE = 11
 PENALTY_SPOT_RADIUS = 0.25
 
 # player attributes
-PLAYER_RADIUS = 0.7
+PLAYER_RADIUS = 1
 
 PLAYER_MAX_SPEED = 7  # Max sprint speed (m/s)
 PLAYER_MAX_ACCELERATION = 2.5  # Max acceleration (m/s²)
@@ -34,11 +34,11 @@ KICK_COOLDOWN = 0.5
 # run (1-10), pass (20-100), shoot (200-500), action (continuous), 1 - 500, mean, variance, discrete action (kick, pass, shoot) -> [-1, 1] * action_type_max_force
 
 # ball attributes
-BALL_RADIUS = 0.35
+BALL_RADIUS = 0.5
 
 # simulation attributes
 DT = 0.1
-MAX_GAME_TIME = 1000
+MAX_GAME_TIME = 512
 FPS = 60
 
 # visual attributes

@@ -2,11 +2,11 @@ import math
 
 from env.config import (
     STADIUM_LENGTH, STADIUM_WIDTH, CENTER_CIRCLE_RADIUS, PENALTY_AREA_LENGTH, PENALTY_AREA_WIDTH, GOAL_AREA_LENGTH, GOAL_AREA_WIDTH, GOAL_WIDTH, GOAL_DEPTH, PENALTY_SPOT_DISTANCE, PENALTY_SPOT_RADIUS,
-    PLAYER_RADIUS, BALL_RADIUS, PLAYER_MAX_SPEED, PLAYER_MAX_ANGULAR_SPEED, BALL_MAX_SPEED,
+    PLAYER_RADIUS, BALL_RADIUS, PLAYER_MAX_SPEED, PLAYER_MAX_ACCELERATION, PLAYER_MAX_ANGULAR_SPEED, PLAYER_MAX_ANGULAR_ACCELERATION, PLAYER_MAX_KICKING_FORCE, BALL_MAX_SPEED,
     DT, MAX_GAME_TIME,
     PLAYER_FRICTION_FACTOR, BALL_FRICTION_FACTOR, ANGULAR_FRICTION_FACTOR, KICK_COOLDOWN
 )
-from env.models import Dimensions, Physics, Simulation
+from env.schema import Dimensions, Physics, Simulation
 
 def scale_dimension(value: float, num_players: int, exponent: float = 1.0) -> float:
     """Scale a dimension with a logarithmic function and a tunable exponent."""
@@ -34,7 +34,10 @@ def get_dimensions(num_players: int) -> Dimensions:
 def get_physics() -> Physics:
     return Physics(
         player_max_speed=PLAYER_MAX_SPEED,
+        player_max_acceleration=PLAYER_MAX_ACCELERATION,
         player_max_angular_speed=PLAYER_MAX_ANGULAR_SPEED,
+        player_max_angular_acceleration=PLAYER_MAX_ANGULAR_ACCELERATION,
+        player_max_kicking_force=PLAYER_MAX_KICKING_FORCE,
         player_friction_factor=PLAYER_FRICTION_FACTOR,
         ball_friction_factor=BALL_FRICTION_FACTOR,
         angular_friction_factor=ANGULAR_FRICTION_FACTOR,

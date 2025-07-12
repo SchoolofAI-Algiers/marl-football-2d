@@ -1,10 +1,11 @@
 from decimal import Decimal
+from typing import Tuple, List
 import numpy as np
 import pygame
 from env.utils import get_dimensions, get_physics, get_simulation
-from env.models import GameState
+from env.schema import GameState, PlayerState, TeamState, BallState, EnvironmentState, StepResult, PlayerReward, TeamRewards, PlayerAction, TeamActions
 from env.engine import Object, Player, Ball, distance, resolve_collisions
-from config import BLACK, WHITE, GREEN, ORANGE, YELLOW, RED, BLUE, RENDER_SCALE, PADDING
+from env.config import BLACK, WHITE, GREEN, ORANGE, YELLOW, RED, BLUE, RENDER_SCALE, PADDING
 
 class FootballEnv:
     def __init__(self, team_size=2):
@@ -72,32 +73,75 @@ class FootballEnv:
                 team=team
             ))
 
-    def _get_state(self):
-        state = []            
-        for player in self.players:
-            state += [
-                player.object.position[0], player.object.position[1],
-                player.object.velocity[0], player.object.velocity[1],
-                player.object.orientation, player.object.angular_velocity,
-                player.team
-            ]
-        
-        state += [
-            self.ball.object.position[0], self.ball.object.position[1],
-            self.ball.object.velocity[0], self.ball.object.velocity[1]
-        ]
-        
-        poss_total = max(sum(self.game_state.possession_time), 1e-6)
-        
-        state += [
-            self.game_state.score[0], self.game_state.score[1],
-            self.game_state.possession if self.game_state.possession is not None else -1,
-            self.game_state.possession_time[0] / poss_total,
-            self.game_state.possession_time[1] / poss_total,
-            self.game_state.game_time
-        ]
-        
-        return np.array(state, dtype=np.float32)
+    def _get_state(self, normalize: bool = True) -> EnvironmentState:
+        def normalize_position(pos: Tuple[float, float]) -> Tuple[float, float]:
+            return (
+                pos[0] / self.dimensions.stadium_length,
+                pos[1] / self.dimensions.stadium_width
+            )
+
+        def normalize_velocity(vel: Tuple[float, float], max_speed: float) -> Tuple[float, float]:
+            return (
+                vel[0] / max_speed,
+                vel[1] / max_speed
+            )
+
+        def normalize_angle(angle: float) -> float:
+            return angle / np.pi  # maps [-π, π] to [-1, 1]
+
+        def normalize_angular_velocity(av: float) -> float:
+            return av / self.physics.player_max_angular_speed
+
+        def player_to_state(player) -> PlayerState:
+            obj = player.object
+            return PlayerState(
+                position=normalize_position(obj.position) if normalize else obj.position,
+                velocity=normalize_velocity(obj.velocity, self.physics.player_max_speed) if normalize else obj.velocity,
+                orientation=normalize_angle(obj.orientation) if normalize else obj.orientation,
+                angular_velocity=normalize_angular_velocity(obj.angular_velocity) if normalize else obj.angular_velocity
+            )
+
+        # Split players by team
+        team1_players = [p for p in self.players if p.team == 0]
+        team2_players = [p for p in self.players if p.team == 1]
+
+        team1_state = TeamState(players=[player_to_state(p) for p in team1_players])
+        team2_state = TeamState(players=[player_to_state(p) for p in team2_players])
+
+        ball_obj = self.ball.object
+        ball_state = BallState(
+            position=normalize_position(ball_obj.position) if normalize else ball_obj.position,
+            velocity=normalize_velocity(ball_obj.velocity, self.physics.ball_max_speed) if normalize else ball_obj.velocity
+        )
+
+        return EnvironmentState(
+            team1=team1_state,
+            team2=team2_state,
+            ball=ball_state
+        )
+
+    def _denormalize_actions(self, actions: TeamActions) -> TeamActions:
+        def denormalize_action(action: PlayerAction) -> PlayerAction:
+            return PlayerAction(
+                acceleration=action.acceleration * self.physics.player_max_acceleration,
+                angular_acceleration=action.angular_acceleration * self.physics.player_max_angular_acceleration,
+                kicking_force=action.kicking_force * self.physics.player_max_kicking_force,
+                kicking_angle=action.kicking_angle * np.pi  # Convert to radians
+            )
+        return TeamActions(
+            team1=[denormalize_action(a) for a in actions.team1],
+            team2=[denormalize_action(a) for a in actions.team2]
+        )
+    
+    def _handle_goal(self, scoring_team: int) -> Tuple[List[PlayerReward], List[PlayerReward]]:
+        self.game_state.score[scoring_team] += 1
+        self.reset(on_goal=True)
+        team1_rewards, team2_rewards = [], []
+        for i, player in enumerate(self.players):
+            r = 1.0 if player.team == scoring_team else -1.0
+            reward = PlayerReward(player_id=i, reward=r)
+            (team1_rewards if player.team == 0 else team2_rewards).append(reward)
+        return team1_rewards, team2_rewards
 
     def reset(self, on_goal=False):
         """
@@ -106,7 +150,7 @@ class FootballEnv:
         - Resets ball position, score, possession, time
         """
         self._init_players()
-        self.ball.object.position = (self.dimensions.stadium_length / 5, self.dimensions.stadium_width / 2)
+        self.ball.object.position = (self.dimensions.stadium_length / 2, self.dimensions.stadium_width / 2)
         self.ball.object.velocity = (0, 0)
         
         if on_goal:
@@ -126,7 +170,7 @@ class FootballEnv:
 
         return self._get_state()
 
-    def step(self, actions):
+    def step(self, actions: TeamActions):
         """
         One simulation step:
         - Applies actions to players (acceleration, angular acceleration, force power, force angle)
@@ -140,11 +184,17 @@ class FootballEnv:
         goal_min_y = (self.dimensions.stadium_width - self.dimensions.goal_width) / 2
         goal_max_y = goal_min_y + self.dimensions.goal_width
 
-        rewards = [0.0] * self.num_players
+        denormalized_actions = self._denormalize_actions(actions)
+        all_actions = denormalized_actions.team1 + denormalized_actions.team2
 
         # 1. First update ALL players' movements
         for i, player in enumerate(self.players):
-            acceleration, angular_acceleration, kicking_force, kicking_angle = actions[i]
+            action = all_actions[i]
+
+            acceleration = action.acceleration
+            angular_acceleration = action.angular_acceleration
+            kicking_force = action.kicking_force
+            kicking_angle = action.kicking_angle
 
             # Convert acceleration to x/y using player's orientation
             ax = np.cos(player.object.orientation) * acceleration
@@ -166,7 +216,7 @@ class FootballEnv:
                 goal_max_y=goal_max_y,
                 goal_depth=self.dimensions.goal_depth
             )
-            
+
         # Resolve collisions between players
         new_objects = resolve_collisions([player.object for player in self.players])
         for i, player in enumerate(self.players):
@@ -178,6 +228,7 @@ class FootballEnv:
         sum_radii = self.dimensions.player_radius + self.dimensions.ball_radius
 
         for i, player in enumerate(self.players):
+            action = all_actions[i]
             dist_to_ball = distance(player.object, self.ball.object)
 
             # Allow kicks only if the player is not the last toucher OR if cooldown has passed
@@ -187,14 +238,14 @@ class FootballEnv:
                 (self.game_state.game_time - self.game_state.last_kick_time) > self.physics.kick_cooldown
             ):
                 # Convert force angle to absolute angle
-                kick_direction = player.object.orientation + kicking_angle
+                kick_direction = player.object.orientation + action.kicking_angle
 
                 # Convert force power to x/y using the force direction
-                kick_x = np.cos(kick_direction) * kicking_force
-                kick_y = np.sin(kick_direction) * kicking_force
+                kick_x = np.cos(kick_direction) * action.kicking_force
+                kick_y = np.sin(kick_direction) * action.kicking_force
 
-                print(f'KICK {player.team} {self.game_state.game_time:.2f} {kicking_force:.2f} ')
-                
+                # print(f'KICK {player.team} {self.game_state.game_time:.2f} {action.kicking_force:.2f} ')
+
                 # Apply the kick force to the ball
                 ball_acceleration += np.array([kick_x, kick_y])
                 
@@ -204,8 +255,6 @@ class FootballEnv:
                 # Track last kicker and time of kick
                 self.game_state.last_kicker = player
                 self.game_state.last_kick_time = self.game_state.game_time
-
-        ball_x, ball_y = self.ball.object.position
         
         # 3. Apply accumulated acceleration to ball
         self.ball.object.act(
@@ -231,28 +280,33 @@ class FootballEnv:
         if possession is not None:
             self.game_state.possession_time[possession] += self.simulation.dt
 
-        # Check if ball is inside the goal area (y-range)
+        # Check for goal
+        ball_x, ball_y = self.ball.object.position
         is_in_goal_y_range = goal_min_y <= ball_y <= goal_max_y
 
-        # Left goal (Team 1 scores)
         if ball_x < 0 and is_in_goal_y_range:
-            self.game_state.score[1] += 1
-            self.reset(on_goal=True)
-            for i, player in enumerate(self.players):
-                rewards[i] = 1.0 if player.team == 1 else -1.0
-
-        # Right goal (Team 0 scores)
+            team1_rewards, team2_rewards = self._handle_goal(scoring_team=1)
         elif ball_x > self.dimensions.stadium_length and is_in_goal_y_range:
-            self.game_state.score[0] += 1
-            self.reset(on_goal=True)
+            team1_rewards, team2_rewards = self._handle_goal(scoring_team=0)
+        else:
+            team1_rewards, team2_rewards = [], []
             for i, player in enumerate(self.players):
-                rewards[i] = 1.0 if player.team == 0 else -1.0
+                reward = PlayerReward(player_id=i, reward=0.0)
+                (team1_rewards if player.team == 0 else team2_rewards).append(reward)
 
         # Update game state
         self.game_state.game_time += self.simulation.dt
         self.done = self.game_state.game_time >= self.simulation.max_game_time
 
-        return self._get_state(), rewards, self.done, {}
+        return StepResult(
+            state=self._get_state(),
+            rewards=TeamRewards(
+                team1=team1_rewards,
+                team2=team2_rewards
+            ),
+            done=self.done,
+            info={}
+        )
 
     def render(self):
         """
@@ -273,8 +327,8 @@ class FootballEnv:
 
         self.screen.fill(GREEN)
         
-        def draw_rectangle(x, y, length, width):
-            pygame.draw.rect(self.screen, WHITE, pygame.Rect(x, y, length, width), 2)
+        def draw_rectangle(x, y, length, width, color=WHITE):
+            pygame.draw.rect(self.screen, color, pygame.Rect(x, y, length, width), 2)
         
         def draw_circle(x, y, radius, color=WHITE):
             pygame.draw.circle(self.screen, color, (int(x), int(y)), int(radius))
@@ -332,8 +386,8 @@ class FootballEnv:
         goal_post_width_px = self.dimensions.goal_width * self.scale
         goal_post_top_y = offset_y + (field_width_px - goal_post_width_px) / 2
         
-        draw_rectangle(goal_depth_x + 1, goal_post_top_y, goal_depth_px, goal_post_width_px)
-        draw_rectangle(offset_x + field_length_px - 1, goal_post_top_y, goal_depth_px, goal_post_width_px)
+        draw_rectangle(goal_depth_x + 1, goal_post_top_y, goal_depth_px, goal_post_width_px, color=RED)
+        draw_rectangle(offset_x + field_length_px - 1, goal_post_top_y, goal_depth_px, goal_post_width_px, color=BLUE)
 
         # Draw players
         for player in self.players:
