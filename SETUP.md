@@ -6,7 +6,7 @@ Follow these steps to set up your development environment:
 Run the following command to create a virtual environment:
 
 ```sh
-python -m venv venv
+uv venv
 ```
 
 ## 2. Activate the Virtual Environment
@@ -23,7 +23,7 @@ python -m venv venv
 Run the following command to install all required dependencies:
 
 ```sh
-pip install -r requirements.txt
+uv pip install -e .
 ```
 
 Your environment is now set up and ready for development!

@@ -1,3 +1,6 @@
+import os
+os.environ["SDL_AUDIODRIVER"] = "dummy" # Disable audio (wsl)
+
 import pygame
 import numpy as np
 from env.config import FPS, PLAYER_MAX_ACCELERATION, PLAYER_MAX_ANGULAR_ACCELERATION, PLAYER_MAX_KICKING_FORCE
