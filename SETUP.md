@@ -26,4 +26,10 @@ Run the following command to install all required dependencies:
 uv pip install -e .
 ```
 
+If you want to use your own GPU for training, install Torch with CUDA support
+
+```sh
+uv pip install torch --index-url https://download.pytorch.org/whl/cu121
+```
+
 Your environment is now set up and ready for development!
