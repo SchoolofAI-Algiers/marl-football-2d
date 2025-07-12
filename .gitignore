@@ -4,3 +4,5 @@ marl_football_2d.egg-info/
 test.*
 uv.lock
 mlruns/
+
+*/models/checkpoints/*

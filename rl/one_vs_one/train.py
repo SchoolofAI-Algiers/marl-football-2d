@@ -14,9 +14,9 @@ def train_selfplay_mirrored(total_timesteps: int = 1_280_000):
     config = PPOConfig()
     total_episodes = total_timesteps // config.rollout_length 
 
-    os.makedirs("./models", exist_ok=True)
-    os.makedirs("./models/checkpoint", exist_ok=True)
-    
+    os.makedirs("./rl/one_vs_one/models", exist_ok=True)
+    os.makedirs("./rl/one_vs_one/models/checkpoint", exist_ok=True)
+
     mlflow.set_tracking_uri("file:./mlruns")
     
     mlflow.set_experiment("ppo_selfplay_experiments")
