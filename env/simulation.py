@@ -16,7 +16,7 @@ state = env.reset()
 done = False
 
 def random_action():
-    acceleration = np.random.uniform(0, 1)
+    acceleration = np.random.uniform(-1, 1)
     angular_acceleration = np.random.uniform(-1, 1)
     kicking_force = np.random.uniform(0, 1)
     kicking_angle = np.random.uniform(-1, 1)
@@ -38,6 +38,7 @@ while not done:
         team1=[random_action() for _ in range(env.team_size)],
         team2=[random_action() for _ in range(env.team_size)]
     )
+    print(f"Action sample: Acc: {actions.team1[0].acceleration}, AngAcc: {actions.team1[0].angular_acceleration}, KickF: {actions.team1[0].kicking_force}, KickAng: {actions.team1[0].kicking_angle}")
     step_result = env.step(actions)
     state, rewards, done, _ = step_result.state, step_result.rewards, step_result.done, step_result.info
     env.render()

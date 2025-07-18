@@ -5,4 +5,4 @@ test.*
 uv.lock
 mlruns/
 
-*/models/checkpoints/*
+rl/one_vs_one/models/checkpoints/

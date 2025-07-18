@@ -12,15 +12,15 @@ ACTION_LOW = torch.tensor([0.0, -1.0, 0.0, -1.0])
 ACTION_HIGH = torch.tensor([1.0, 1.0, 1.0, 1.0])
 
 class PPOConfig(BaseModel):
-    lr: float = 3e-4
+    lr: float = 1e-5
     gamma: float = 0.99
     gae_lambda: float = 0.95
     eps_clip: float = 0.2
-    ent_coef: float = 0.01
+    ent_coef: float = 0.001
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
     rollout_length: int = 5120
-    mini_batch_size: int = 128
+    mini_batch_size: int = 256
     epochs: int = 8
 
 class PPOMetrics(BaseModel):
@@ -33,7 +33,13 @@ class PPOMetrics(BaseModel):
 class ActorCritic(nn.Module):
     def __init__(self, obs_dim: int, act_dim: int):
         super().__init__()
-        hidden = 256
+        
+        def init_weights(m):
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight, gain=nn.init.calculate_gain('tanh'))
+                nn.init.constant_(m.bias, 0)
+        
+        hidden = 512
         self.net = nn.Sequential(
             nn.Linear(obs_dim, hidden), nn.Tanh(),
             nn.Linear(hidden, hidden), nn.Tanh(),
@@ -42,26 +48,50 @@ class ActorCritic(nn.Module):
 
         self.actor_mean = nn.Sequential(
             nn.Linear(hidden, hidden),
+            nn.Tanh(),
             nn.Linear(hidden, act_dim)
         )
-            
+
+        self.actor_log_std = nn.Sequential(
+            nn.Linear(hidden, hidden),
+            nn.Tanh(),
+            nn.Linear(hidden, act_dim)
+        )
+
         self.critic = nn.Sequential(
             nn.Linear(hidden, hidden),
+            nn.Tanh(),
             nn.Linear(hidden, 1)
         )
-        
-        initial_log_std = torch.tensor([-1.0, -2.0, -1.0, -2.0]) # [ acceleration, angular_acc, kicking_force, kicking_angle ]
-        self.log_std = nn.Parameter(initial_log_std)
+
+        # # Apply custom weight initialization
+        self.net.apply(init_weights)
+        self.actor_mean.apply(init_weights)
+        self.actor_log_std.apply(init_weights)
+        self.critic.apply(init_weights)
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         h = self.net(x)
+
         mu = self.actor_mean(h)
-        std = self.log_std.exp().expand_as(mu)
+
+        log_std = self.actor_log_std(h)
+        log_std = torch.clamp(log_std, min=-4, max=-2)
+        std = torch.exp(log_std)
+
         value = self.critic(h)
         return mu, std, value
 
     def get_dist(self, obs: torch.Tensor):
         mu, std, _ = self.forward(obs)
+        
+        if torch.isnan(mu).any() or torch.isnan(std).any():
+            print("NaNs in mu or std!")
+            print("mu:", mu)
+            print("std:", std)
+            print("obs:", obs)
+            raise ValueError("NaNs in policy output")
+        
         base_dist = Normal(mu, std)
         return TransformedDistribution(base_dist, [TanhTransform(cache_size=1)])
 
@@ -73,8 +103,8 @@ class ActorCritic(nn.Module):
 class PPOAgent:
     def __init__(self, obs_dim: int, act_dim: int, config: PPOConfig):
         self.config = config
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = 'cpu'
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.policy = ActorCritic(obs_dim, act_dim).to(self.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=config.lr)
         
@@ -151,7 +181,7 @@ class PPOAgent:
                 
                 self.optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(self.policy.parameters(), self.config.max_grad_norm)
+                # nn.utils.clip_grad_norm_(self.policy.parameters(), self.config.max_grad_norm)
                 self.optimizer.step()
                 
                 policy_losses.append(policy_loss.item())

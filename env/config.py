@@ -56,3 +56,6 @@ BLUE = (0, 0, 255)
 PLAYER_FRICTION_FACTOR = 0.96
 BALL_FRICTION_FACTOR = 0.97
 ANGULAR_FRICTION_FACTOR = 0.95
+
+# Reward
+STEP_REWARD = -0.0001  # Small negative reward for each step to encourage efficiency

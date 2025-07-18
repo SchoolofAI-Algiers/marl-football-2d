@@ -5,7 +5,7 @@ import pygame
 from env.utils import get_dimensions, get_physics, get_simulation
 from env.schema import GameState, PlayerState, TeamState, BallState, EnvironmentState, StepResult, PlayerReward, TeamRewards, PlayerAction, TeamActions
 from env.engine import Object, Player, Ball, distance, resolve_collisions
-from env.config import BLACK, WHITE, GREEN, ORANGE, YELLOW, RED, BLUE, RENDER_SCALE, PADDING
+from env.config import BLACK, WHITE, GREEN, ORANGE, YELLOW, RED, BLUE, RENDER_SCALE, PADDING, STEP_REWARD
 
 class FootballEnv:
     def __init__(self, team_size=2):
@@ -50,7 +50,7 @@ class FootballEnv:
         self.players = []
         for i in range(self.num_players):
             team = 0 if i < self.team_size else 1
-            x = 0.4 * self.dimensions.stadium_length if team == 0 else 0.6 * self.dimensions.stadium_length
+            x = 0.25 * self.dimensions.stadium_length if team == 0 else 0.75 * self.dimensions.stadium_length
             
             # Distribute players around the center on y-axis
             idx_within_team = i % self.team_size
@@ -134,6 +134,7 @@ class FootballEnv:
         )
     
     def _handle_goal(self, scoring_team: int) -> Tuple[List[PlayerReward], List[PlayerReward]]:
+        # print(f"Goal scored by Team {scoring_team} at time {self.game_state.game_time:.2f}")
         self.game_state.score[scoring_team] += 1
         self.reset(on_goal=True)
         team1_rewards, team2_rewards = [], []
@@ -291,7 +292,7 @@ class FootballEnv:
         else:
             team1_rewards, team2_rewards = [], []
             for i, player in enumerate(self.players):
-                reward = PlayerReward(player_id=i, reward=0.0)
+                reward = PlayerReward(player_id=i, reward=STEP_REWARD)
                 (team1_rewards if player.team == 0 else team2_rewards).append(reward)
 
         # Update game state

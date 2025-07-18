@@ -1,7 +1,9 @@
 import os
+os.environ["SDL_AUDIODRIVER"] = "dummy" # Disable audio (wsl)
 import torch
 import mlflow
 import random
+import time
 
 from env.environment import FootballEnv
 from env.schema import PlayerAction, TeamActions, StepResult
@@ -10,17 +12,19 @@ from rl.one_vs_one.rollout import RolloutBuffer
 from rl.one_vs_one.ppo import PPOAgent, PPOConfig, PPOMetrics
 from rl.one_vs_one.utils import mirror_action, env_to_obs
 
-def train_selfplay_mirrored(total_timesteps: int = 1_280_000):
+def train_selfplay_mirrored(total_timesteps: int = 5_120_000):
     config = PPOConfig()
     total_episodes = total_timesteps // config.rollout_length 
 
     os.makedirs("./rl/one_vs_one/models", exist_ok=True)
-    os.makedirs("./rl/one_vs_one/models/checkpoint", exist_ok=True)
+    os.makedirs("./rl/one_vs_one/models/checkpoints", exist_ok=True)
 
     mlflow.set_tracking_uri("file:./mlruns")
     
     mlflow.set_experiment("ppo_selfplay_experiments")
     run_name = f"PPO-Selfplay-Mirrored-{random.randint(10, 99)}"
+
+    start_time = time.time()
 
     with mlflow.start_run(run_name=run_name):
 
@@ -51,6 +55,9 @@ def train_selfplay_mirrored(total_timesteps: int = 1_280_000):
         buffer = RolloutBuffer()
         timestep = 0
         episode_count = 0
+        wins_count = 0
+        draws_count = 0
+        losses_count = 0
 
         while timestep < total_timesteps:
             state = env.reset()
@@ -109,7 +116,27 @@ def train_selfplay_mirrored(total_timesteps: int = 1_280_000):
                 timestep += 1
 
                 if done:
-                    break
+                    goals_team1 = env.game_state.score[0]
+                    goals_team2 = env.game_state.score[1]
+                    goal_difference = goals_team1 - goals_team2
+                    
+                    mlflow.log_metric("goals_scored", goals_team1, step=episode_count)
+                    mlflow.log_metric("goals_conceded", goals_team2, step=episode_count)
+                    mlflow.log_metric("goals_difference", goal_difference, step=episode_count)
+                    
+                    if goal_difference > 0:
+                        wins_count += 1
+                        mlflow.log_metric("wins", wins_count, step=episode_count)
+                    elif goal_difference < 0:
+                        losses_count += 1
+                        mlflow.log_metric("losses", losses_count, step=episode_count)
+                    else:
+                        draws_count += 1
+                        mlflow.log_metric("draws", draws_count, step=episode_count)
+                        
+                    mlflow.log_metric("win_ratio", wins_count / episode_count, step=episode_count)
+                    mlflow.log_metric("draw_ratio", draws_count / episode_count, step=episode_count)
+                    mlflow.log_metric("loss_ratio", losses_count / episode_count, step=episode_count)
 
             # Compute final value
             if done:
@@ -135,21 +162,21 @@ def train_selfplay_mirrored(total_timesteps: int = 1_280_000):
             mlflow.log_metric("loss", metrics.loss, step=episode_count)
             mlflow.log_metric("mean_return", metrics.mean_return, step=episode_count)
 
-            if episode_count % 50 == 0:
-                opponent.policy.load_state_dict(agent.policy.state_dict())
-                print(f"Episode {episode_count} / {total_episodes}: Updated opponent policy")
+            # if episode_count % 50 == 0:
+            #     opponent.policy.load_state_dict(agent.policy.state_dict())
+            #     print(f"Episode {episode_count} / {total_episodes}: Updated opponent policy")
                 
             if episode_count % 50 == 0:
                 torch.save({
                     "agent_policy": agent.policy.state_dict(),
                     "opponent_policy": opponent.policy.state_dict()
-                }, f"./models/checkpoint/episode_{episode_count}.pth")
+                }, f"./rl/one_vs_one/models/checkpoints/episode_{episode_count}.pth")
                 print(f"Checkpoint saved at Episode {episode_count}")
 
-            if episode_count % 100 == 0:
-                print(f"Episode {episode_count} / {total_episodes}")
+            if episode_count % 5 == 0:
+                print(f"Episode {episode_count} / {total_episodes}, Time: {(time.time() - start_time)/60:.2f} minutes")
 
-        torch.save(agent.policy.state_dict(), os.path.join("./models", "ppo_selfplay_mirrored.pt"))
+        torch.save(agent.policy.state_dict(), os.path.join("./rl/one_vs_one/models", "ppo_selfplay_mirrored.pt"))
         print("Training completed and model saved!")
 
 if __name__ == "__main__":
