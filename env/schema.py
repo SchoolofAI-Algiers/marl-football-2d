@@ -1,4 +1,4 @@
-from typing import Tuple, Union, List, Dict
+from typing import Tuple, Union, List, Dict, Optional
 from pydantic import BaseModel
 
 class Dimensions(BaseModel):
@@ -55,7 +55,7 @@ class BallState(BaseModel):
 
 class EnvironmentState(BaseModel):
     team1: TeamState
-    team2: TeamState
+    team2: Optional[TeamState] = None
     ball: BallState
     
 class PlayerReward(BaseModel):
@@ -64,7 +64,7 @@ class PlayerReward(BaseModel):
 
 class TeamRewards(BaseModel):
     team1: List[PlayerReward]
-    team2: List[PlayerReward]
+    team2: Optional[List[PlayerReward]] = None
 
 class StepResult(BaseModel):
     state: EnvironmentState
@@ -80,4 +80,4 @@ class PlayerAction(BaseModel):
 
 class TeamActions(BaseModel):
     team1: List[PlayerAction]
-    team2: List[PlayerAction]
+    team2: Optional[List[PlayerAction]] = None

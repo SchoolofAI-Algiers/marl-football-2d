@@ -22,8 +22,8 @@ PENALTY_SPOT_RADIUS = 0.25
 # player attributes
 PLAYER_RADIUS = 1
 
-PLAYER_MAX_SPEED = 7  # Max sprint speed (m/s)
-PLAYER_MAX_ACCELERATION = 2.5  # Max acceleration (m/s²)
+PLAYER_MAX_SPEED = 9  # Max sprint speed (m/s)
+PLAYER_MAX_ACCELERATION = 3  # Max acceleration (m/s²)
 PLAYER_MAX_ANGULAR_SPEED = np.pi / 2  # Max turning speed (rad/s)
 PLAYER_MAX_ANGULAR_ACCELERATION = np.pi / 2  # Max turning acceleration (rad/s²)
 PLAYER_MAX_KICKING_FORCE = 15  # Max kicking acceleration (m/s²)
@@ -38,7 +38,7 @@ BALL_RADIUS = 0.5
 
 # simulation attributes
 DT = 0.1
-MAX_GAME_TIME = 512
+MAX_GAME_TIME = 128
 FPS = 60
 
 # visual attributes
@@ -59,3 +59,4 @@ ANGULAR_FRICTION_FACTOR = 0.95
 
 # Reward
 STEP_REWARD = -0.0001  # Small negative reward for each step to encourage efficiency
+KICK_REWARD = 0.1  # Small positive reward for kicking the ball

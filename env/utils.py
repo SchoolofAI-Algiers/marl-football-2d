@@ -1,4 +1,5 @@
 import math
+import random
 
 from env.config import (
     STADIUM_LENGTH, STADIUM_WIDTH, CENTER_CIRCLE_RADIUS, PENALTY_AREA_LENGTH, PENALTY_AREA_WIDTH, GOAL_AREA_LENGTH, GOAL_AREA_WIDTH, GOAL_WIDTH, GOAL_DEPTH, PENALTY_SPOT_DISTANCE, PENALTY_SPOT_RADIUS,
@@ -50,3 +51,7 @@ def get_simulation() -> Simulation:
         dt=DT,
         max_game_time=MAX_GAME_TIME
     )
+
+def random_float():
+    """Generate a random float between 0 and 1."""
+    return random.random()

@@ -4,22 +4,23 @@ from typing import Tuple, List, Dict
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
-from torch.distributions import Normal, TransformedDistribution, TanhTransform
+from torch.distributions import Beta
 
 # Action space constants
-ACTION_LOW = torch.tensor([0.0, -1.0, 0.0, -1.0])
+ACTION_LOW = torch.tensor([-1.0, -1.0, 0.0, -1.0])
 ACTION_HIGH = torch.tensor([1.0, 1.0, 1.0, 1.0])
 
 class PPOConfig(BaseModel):
-    lr: float = 1e-5
+    lr: float = 1e-4
     gamma: float = 0.99
     gae_lambda: float = 0.95
     eps_clip: float = 0.2
     ent_coef: float = 0.001
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
-    rollout_length: int = 5120
+    rollout_length: int = 5120 * 1 # full match
     mini_batch_size: int = 256
     epochs: int = 8
 
@@ -33,69 +34,51 @@ class PPOMetrics(BaseModel):
 class ActorCritic(nn.Module):
     def __init__(self, obs_dim: int, act_dim: int):
         super().__init__()
-        
-        def init_weights(m):
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_uniform_(m.weight, gain=nn.init.calculate_gain('tanh'))
-                nn.init.constant_(m.bias, 0)
-        
         hidden = 512
+
         self.net = nn.Sequential(
             nn.Linear(obs_dim, hidden), nn.Tanh(),
             nn.Linear(hidden, hidden), nn.Tanh(),
             nn.Linear(hidden, hidden), nn.Tanh()
         )
 
-        self.actor_mean = nn.Sequential(
-            nn.Linear(hidden, hidden),
-            nn.Tanh(),
+        self.actor_alpha = nn.Sequential(
+            nn.Linear(hidden, hidden), nn.Tanh(),
             nn.Linear(hidden, act_dim)
         )
 
-        self.actor_log_std = nn.Sequential(
-            nn.Linear(hidden, hidden),
-            nn.Tanh(),
+        self.actor_beta = nn.Sequential(
+            nn.Linear(hidden, hidden), nn.Tanh(),
             nn.Linear(hidden, act_dim)
         )
 
         self.critic = nn.Sequential(
-            nn.Linear(hidden, hidden),
-            nn.Tanh(),
+            nn.Linear(hidden, hidden), nn.Tanh(),
             nn.Linear(hidden, 1)
         )
 
-        # # Apply custom weight initialization
+        def init_weights(m):
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight, gain=nn.init.calculate_gain('tanh'))
+                nn.init.constant_(m.bias, 0)
+
         self.net.apply(init_weights)
-        self.actor_mean.apply(init_weights)
-        self.actor_log_std.apply(init_weights)
+        self.actor_alpha.apply(init_weights)
+        self.actor_beta.apply(init_weights)
         self.critic.apply(init_weights)
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor):
         h = self.net(x)
-
-        mu = self.actor_mean(h)
-
-        log_std = self.actor_log_std(h)
-        log_std = torch.clamp(log_std, min=-4, max=-2)
-        std = torch.exp(log_std)
-
+        alpha = 1 + F.softplus(self.actor_alpha(h))
+        beta = 1 + F.softplus(self.actor_beta(h))
         value = self.critic(h)
-        return mu, std, value
+        return alpha, beta, value
 
     def get_dist(self, obs: torch.Tensor):
-        mu, std, _ = self.forward(obs)
-        
-        if torch.isnan(mu).any() or torch.isnan(std).any():
-            print("NaNs in mu or std!")
-            print("mu:", mu)
-            print("std:", std)
-            print("obs:", obs)
-            raise ValueError("NaNs in policy output")
-        
-        base_dist = Normal(mu, std)
-        return TransformedDistribution(base_dist, [TanhTransform(cache_size=1)])
+        alpha, beta, _ = self.forward(obs)
+        return Beta(alpha, beta)
 
-    def get_value(self, obs: torch.Tensor) -> torch.Tensor:
+    def get_value(self, obs: torch.Tensor):
         with torch.no_grad():
             h = self.net(obs)
             return self.critic(h).squeeze(-1)
@@ -103,21 +86,21 @@ class ActorCritic(nn.Module):
 class PPOAgent:
     def __init__(self, obs_dim: int, act_dim: int, config: PPOConfig):
         self.config = config
-        self.device = 'cpu'
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = 'cpu' # torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.policy = ActorCritic(obs_dim, act_dim).to(self.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=config.lr)
-        
+
         self.low = ACTION_LOW.to(self.device)
         self.high = ACTION_HIGH.to(self.device)
 
     def rescale_action(self, action: torch.Tensor) -> torch.Tensor:
-        """Maps action from [-1, 1] to actual action range."""
-        return self.low + 0.5 * (action + 1.0) * (self.high - self.low)
+        return self.low + (self.high - self.low) * action
+
+    def inverse_rescale_action(self, action: torch.Tensor) -> torch.Tensor:
+        return (action - self.low) / (self.high - self.low)
 
     def select_action(self, obs: np.ndarray) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        # obs_t = torch.FloatTensor(obs).to(self.device)  # shape: [B, obs_dim]
-        obs_t = obs
+        obs_t = obs if torch.is_tensor(obs) else torch.FloatTensor(obs).to(self.device)
         with torch.no_grad():
             dist = self.policy.get_dist(obs_t)
             raw_actions = dist.sample()
@@ -146,8 +129,7 @@ class PPOAgent:
         advantages = returns - values
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        # Inverse rescale actions to raw Tanh range [-1, 1]
-        raw_actions = 2 * (actions - self.low) / (self.high - self.low) - 1.0
+        raw_actions = self.inverse_rescale_action(actions)
         
         policy_losses = []
         value_losses = []
@@ -167,7 +149,7 @@ class PPOAgent:
 
                 dist = self.policy.get_dist(mb_obs)
                 new_log_probs = dist.log_prob(mb_raw_actions).sum(1)
-                entropy = dist.base_dist.entropy().sum(1).mean()
+                entropy = dist.entropy().sum(1).mean()
 
                 ratio = (new_log_probs - mb_old_log_probs).exp()
                 surr1 = ratio * mb_adv
@@ -178,12 +160,12 @@ class PPOAgent:
                 value_loss = (mb_returns - value.squeeze()).pow(2).mean()
 
                 loss = policy_loss + self.config.vf_coef * value_loss - self.config.ent_coef * entropy
-                
+
                 self.optimizer.zero_grad()
                 loss.backward()
                 # nn.utils.clip_grad_norm_(self.policy.parameters(), self.config.max_grad_norm)
                 self.optimizer.step()
-                
+
                 policy_losses.append(policy_loss.item())
                 value_losses.append(value_loss.item())
                 entropies.append(entropy.item())
