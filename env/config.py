@@ -24,8 +24,8 @@ PLAYER_RADIUS = 1
 
 PLAYER_MAX_SPEED = 9  # Max sprint speed (m/s)
 PLAYER_MAX_ACCELERATION = 3  # Max acceleration (m/s²)
-PLAYER_MAX_ANGULAR_SPEED = np.pi / 2  # Max turning speed (rad/s)
-PLAYER_MAX_ANGULAR_ACCELERATION = np.pi / 2  # Max turning acceleration (rad/s²)
+PLAYER_MAX_ANGULAR_SPEED = np.pi / 4  # Max turning speed (rad/s)
+PLAYER_MAX_ANGULAR_ACCELERATION = np.pi / 8  # Max turning acceleration (rad/s²)
 PLAYER_MAX_KICKING_FORCE = 15  # Max kicking acceleration (m/s²)
 
 BALL_MAX_SPEED = 25  # Max ball speed (m/s)
@@ -38,7 +38,7 @@ BALL_RADIUS = 0.5
 
 # simulation attributes
 DT = 0.1
-MAX_GAME_TIME = 128
+MAX_GAME_TIME = 256
 FPS = 60
 
 # visual attributes

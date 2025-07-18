@@ -566,7 +566,7 @@ class FootballNoOpponentEnv:
             self.game_state.last_kick_time = None
         else:
             self.game_state = GameState(
-                game_time=Decimal('0.0'),
+                game_time=Decimal('0.1'),
                 score=[0, 0],
                 possession=None,
                 possession_time=[Decimal('0.0'), Decimal('0.0')],

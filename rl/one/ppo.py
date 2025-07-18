@@ -9,7 +9,7 @@ import torch.optim as optim
 from torch.distributions import Beta
 
 # Action space constants
-ACTION_LOW = torch.tensor([-1.0, -1.0, 0.0, -1.0])
+ACTION_LOW = torch.tensor([0.0, -1.0, 0.0, -1.0])
 ACTION_HIGH = torch.tensor([1.0, 1.0, 1.0, 1.0])
 
 class PPOConfig(BaseModel):
@@ -17,11 +17,11 @@ class PPOConfig(BaseModel):
     gamma: float = 0.99
     gae_lambda: float = 0.95
     eps_clip: float = 0.2
-    ent_coef: float = 0.001
-    vf_coef: float = 0.5
+    ent_coef: float = 0.0005
+    vf_coef: float = 1.0
     max_grad_norm: float = 0.5
-    rollout_length: int = 5120 * 1 # full match
-    mini_batch_size: int = 256
+    rollout_length: int = 256 * 10 * 1 # full match * X
+    mini_batch_size: int = 64
     epochs: int = 8
 
 class PPOMetrics(BaseModel):
@@ -86,7 +86,7 @@ class ActorCritic(nn.Module):
 class PPOAgent:
     def __init__(self, obs_dim: int, act_dim: int, config: PPOConfig):
         self.config = config
-        self.device = 'cpu' # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = 'cpu' #torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.policy = ActorCritic(obs_dim, act_dim).to(self.device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=config.lr)
 

@@ -1,5 +1,6 @@
 import os
-os.environ["SDL_AUDIODRIVER"] = "dummy" # Disable audio (wsl)
+os.environ["SDL_AUDIODRIVER"] = "dummy"  # Disable audio (wsl)
+
 import torch
 import mlflow
 import random
@@ -12,23 +13,20 @@ from rl.one.rollout import RolloutBuffer
 from rl.one.ppo import PPOAgent, PPOConfig, PPOMetrics
 from rl.one.utils import env_to_obs
 
-def train_selfplay_mirrored(total_timesteps: int = 5_120_000):
+def train_one_player(total_timesteps: int = 5_120_000):
     config = PPOConfig()
-    total_episodes = total_timesteps // config.rollout_length 
+    total_episodes = total_timesteps // config.rollout_length
 
     os.makedirs("./rl/one/models", exist_ok=True)
     os.makedirs("./rl/one/models/checkpoints", exist_ok=True)
 
     mlflow.set_tracking_uri("file:./mlruns")
-    
     mlflow.set_experiment("ppo_one_player_experiments")
     run_name = f"PPO-One-Player-{random.randint(10, 99)}"
 
     start_time = time.time()
 
     with mlflow.start_run(run_name=run_name):
-
-        # Log hyperparameters once
         mlflow.log_params({
             "rollout_length": config.rollout_length,
             "epochs": config.epochs,
@@ -47,90 +45,101 @@ def train_selfplay_mirrored(total_timesteps: int = 5_120_000):
         obs_dim = env_to_obs(sample_obs).shape[0]
         act_dim = 4
 
-        config = PPOConfig()
         agent = PPOAgent(obs_dim, act_dim, config)
-
         buffer = RolloutBuffer()
+
         timestep = 0
         episode_count = 0
         wins_count = 0
         draws_count = 0
         losses_count = 0
+        
+        goals_for = 0
+        goals_against = 0
 
         while timestep < total_timesteps:
-            state = env.reset()
-            episode_count += 1
+            buffer.clear()
+            steps_collected = 0
 
-            episode_return = 0
+            while steps_collected < config.rollout_length:
+                state = env.reset()
+                episode_return = 0
+                done = False
 
-            for step in range(config.rollout_length):
-                obs1 = env_to_obs(state)
+                while not done and steps_collected < config.rollout_length:
+                    obs = env_to_obs(state)
+                    obs_t = torch.FloatTensor(obs).unsqueeze(0).to(agent.device)
 
-                obs1_t = torch.FloatTensor(obs1).unsqueeze(0).to(agent.device)
+                    with torch.no_grad():
+                        action_t, logp_t, val_t = agent.select_action(obs_t)
 
-                with torch.no_grad():
-                    action1_t, logp1_t, val1_t = agent.select_action(obs1_t)
-                action1 = action1_t.squeeze(0).cpu().numpy()
-                logp1 = logp1_t.item()
-                val1 = val1_t.item()
+                    action = action_t.squeeze(0).cpu().numpy()
+                    logp = logp_t.item()
+                    val = val_t.item()
 
+                    team_actions = TeamActions(
+                        team1=[PlayerAction(
+                            acceleration=action[0],
+                            angular_acceleration=action[1],
+                            kicking_force=action[2],
+                            kicking_angle=action[3]
+                        )]
+                    )
 
-                team_actions = TeamActions(
-                    team1=[PlayerAction(
-                        acceleration=action1[0],
-                        angular_acceleration=action1[1],
-                        kicking_force=action1[2],
-                        kicking_angle=action1[3]
-                    )],
-                )
+                    result: StepResult = env.step(team_actions)
+                    next_state = result.state
+                    reward = result.rewards.team1[0].reward
+                    done = result.done
 
-                result: StepResult = env.step(team_actions)
-                # print(result)
-                next_state = result.state
-                reward = result.rewards.team1[0].reward
-                done = result.done
-                
-                env.render()
+                    env.render()
 
-                buffer.obs.append(obs1)
-                buffer.actions.append(action1)
-                buffer.log_probs.append(logp1)
-                buffer.values.append(val1)
-                buffer.rewards.append(reward)
-                buffer.dones.append(done)
+                    buffer.obs.append(obs)
+                    buffer.actions.append(action)
+                    buffer.log_probs.append(logp)
+                    buffer.values.append(val)
+                    buffer.rewards.append(reward)
+                    buffer.dones.append(done)
 
-                episode_return += reward
-                state = next_state
-                timestep += 1
+                    episode_return += reward
+                    state = next_state
+                    timestep += 1
+                    steps_collected += 1
 
-                if done:
-                    goals_team1 = env.game_state.score[0]
-                    goals_team2 = env.game_state.score[1]
-                    goal_difference = goals_team1 - goals_team2
-                    
-                    mlflow.log_metric("goals_scored", goals_team1, step=episode_count)
-                    mlflow.log_metric("goals_conceded", goals_team2, step=episode_count)
-                    mlflow.log_metric("goals_difference", goal_difference, step=episode_count)
-                    
-                    if goal_difference > 0:
-                        wins_count += 1
-                        mlflow.log_metric("wins", wins_count, step=episode_count)
-                    elif goal_difference < 0:
-                        losses_count += 1
-                        mlflow.log_metric("losses", losses_count, step=episode_count)
-                    else:
-                        draws_count += 1
-                        mlflow.log_metric("draws", draws_count, step=episode_count)
+                    if done:
+                        episode_count += 1
+                        goals_team1 = env.game_state.score[0]
+                        goals_team2 = env.game_state.score[1]
+                        goal_diff = goals_team1 - goals_team2
                         
-                    mlflow.log_metric("win_ratio", wins_count / episode_count, step=episode_count)
-                    mlflow.log_metric("draw_ratio", draws_count / episode_count, step=episode_count)
-                    mlflow.log_metric("loss_ratio", losses_count / episode_count, step=episode_count)
+                        goals_for += goals_team1
+                        goals_against += goals_team2
 
-            # Compute final value
+                        mlflow.log_metric("2_1_goals_scored", goals_team1, step=episode_count)
+                        mlflow.log_metric("2_2_goals_conceded", goals_team2, step=episode_count)
+                        mlflow.log_metric("2_3_goals_difference", goal_diff, step=episode_count)
+                        
+                        mlflow.log_metric("2_4_goals_for", goals_for, step=episode_count)
+                        mlflow.log_metric("2_5_goals_against", goals_against, step=episode_count)
+
+                        if goal_diff > 0:
+                            wins_count += 1
+                            mlflow.log_metric("3_1_wins", wins_count, step=episode_count)
+                        elif goal_diff < 0:
+                            losses_count += 1
+                            mlflow.log_metric("3_2_losses", losses_count, step=episode_count)
+                        else:
+                            draws_count += 1
+                            mlflow.log_metric("3_3_draws", draws_count, step=episode_count)
+
+                        mlflow.log_metric("1_1_win_ratio", wins_count / episode_count, step=episode_count)
+                        mlflow.log_metric("1_2_draw_ratio", draws_count / episode_count, step=episode_count)
+                        mlflow.log_metric("1_3_loss_ratio", losses_count / episode_count, step=episode_count)
+
+            # Bootstrapping for GAE
             if done:
                 last_val = 0
             else:
-                obs_final = env_to_obs(state, team=0)
+                obs_final = env_to_obs(state)
                 obs_final_t = torch.FloatTensor(obs_final).unsqueeze(0).to(agent.device)
                 with torch.no_grad():
                     _, _, last_val_t = agent.select_action(obs_final_t)
@@ -141,30 +150,25 @@ def train_selfplay_mirrored(total_timesteps: int = 5_120_000):
             buffer.values = buffer.values[:-1]
 
             metrics: PPOMetrics = agent.update(buffer.__dict__)
-            buffer.clear()
 
-            # Log to MLflow
-            mlflow.log_metric("policy_loss", metrics.policy_loss, step=episode_count)
-            mlflow.log_metric("value_loss", metrics.value_loss, step=episode_count)
-            mlflow.log_metric("entropy", metrics.entropy, step=episode_count)
-            mlflow.log_metric("loss", metrics.loss, step=episode_count)
-            mlflow.log_metric("mean_return", metrics.mean_return, step=episode_count)
+            mlflow.log_metric("4_1_mean_return", metrics.mean_return, step=episode_count)
+            mlflow.log_metric("4_2_loss", metrics.loss, step=episode_count)
+            mlflow.log_metric("4_3_entropy", metrics.entropy, step=episode_count)
+            mlflow.log_metric("4_4_policy_loss", metrics.policy_loss, step=episode_count)
+            mlflow.log_metric("4_5_value_loss", metrics.value_loss, step=episode_count)
 
-            # if episode_count % 50 == 0:
-            #     opponent.policy.load_state_dict(agent.policy.state_dict())
-            #     print(f"Episode {episode_count} / {total_episodes}: Updated opponent policy")
-                
             if episode_count % 50 == 0:
                 torch.save({
                     "agent_policy": agent.policy.state_dict(),
                 }, f"./rl/one/models/checkpoints/episode_{episode_count}.pth")
                 print(f"Checkpoint saved at Episode {episode_count}")
 
-            if episode_count % 5 == 0:
-                print(f"Episode {episode_count} / {total_episodes}, Time: {(time.time() - start_time)/60:.2f} minutes")
+            if episode_count % 10 == 0:
+                elapsed = (time.time() - start_time) / 60
+                print(f"Episode {episode_count} / {total_episodes} | Timestep {timestep} | Time: {elapsed:.2f} minutes")
 
-        torch.save(agent.policy.state_dict(), os.path.join("./rl/one/models", "ppo_selfplay_mirrored.pt"))
+        torch.save(agent.policy.state_dict(), "./rl/one/models/ppo_one_player.pt")
         print("Training completed and model saved!")
 
 if __name__ == "__main__":
-    train_selfplay_mirrored()
+    train_one_player()
