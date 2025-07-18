@@ -60,6 +60,7 @@ def train_one_player(total_timesteps: int = 5_120_000):
         while timestep < total_timesteps:
             buffer.clear()
             steps_collected = 0
+            episode_returns = []
 
             while steps_collected < config.rollout_length:
                 state = env.reset()
@@ -106,6 +107,7 @@ def train_one_player(total_timesteps: int = 5_120_000):
                     steps_collected += 1
 
                     if done:
+                        episode_returns.append(episode_return)
                         episode_count += 1
                         goals_team1 = env.game_state.score[0]
                         goals_team2 = env.game_state.score[1]
@@ -149,9 +151,11 @@ def train_one_player(total_timesteps: int = 5_120_000):
             buffer.returns = agent.compute_gae(buffer.rewards, buffer.values, buffer.dones)
             buffer.values = buffer.values[:-1]
 
+            mean_return = sum(episode_returns) / len(episode_returns) if episode_returns else 0
+            mlflow.log_metric("4_1_mean_return", mean_return, step=episode_count)
+            
             metrics: PPOMetrics = agent.update(buffer.__dict__)
 
-            mlflow.log_metric("4_1_mean_return", metrics.mean_return, step=episode_count)
             mlflow.log_metric("4_2_loss", metrics.loss, step=episode_count)
             mlflow.log_metric("4_3_entropy", metrics.entropy, step=episode_count)
             mlflow.log_metric("4_4_policy_loss", metrics.policy_loss, step=episode_count)

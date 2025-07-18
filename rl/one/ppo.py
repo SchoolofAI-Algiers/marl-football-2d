@@ -29,7 +29,6 @@ class PPOMetrics(BaseModel):
     value_loss: float
     entropy: float
     loss: float
-    mean_return: float
 
 class ActorCritic(nn.Module):
     def __init__(self, obs_dim: int, act_dim: int):
@@ -176,5 +175,4 @@ class PPOAgent:
             value_loss=np.mean(value_losses),
             entropy=np.mean(entropies),
             loss=np.mean(total_losses),
-            mean_return=np.mean(returns.cpu().numpy())
         )
