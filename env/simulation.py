@@ -10,8 +10,8 @@ from env.schema import PlayerAction, TeamActions
 pygame.init()
 clock = pygame.time.Clock()
 
-# env = FootballEnv(team_size=1)
-env = FootballNoOpponentEnv(team_size=1)  # Use no-opponent environment for simplicity
+# env = FootballEnv(team_size=3)
+env = FootballNoOpponentEnv(team_size=3)  # Use no-opponent environment for simplicity
 
 state = env.reset()
 done = False
@@ -37,7 +37,7 @@ while not done:
 
     actions = TeamActions(
         team1=[random_action() for _ in range(env.team_size)],
-        # team2=[random_action() for _ in range(env.team_size)]
+        team2=[random_action() for _ in range(env.team_size)]
     )
     # print(f"Action sample: Acc: {actions.team1[0].acceleration}, AngAcc: {actions.team1[0].angular_acceleration}, KickF: {actions.team1[0].kicking_force}, KickAng: {actions.team1[0].kicking_angle}")
     step_result = env.step(actions)
