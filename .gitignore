@@ -1,0 +1,16 @@
+# environment
+.venv/
+marl_football_2d.egg-info/
+uv.lock
+
+# python
+__pycache__/
+
+# test
+test.*
+
+# logs
+logs/*
+
+# coding agent
+.claude/
