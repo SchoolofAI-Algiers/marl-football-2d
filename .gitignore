@@ -1,8 +1,16 @@
+# environment
 .venv/
-__pycache__/
 marl_football_2d.egg-info/
-test.*
 uv.lock
-mlruns/
 
-rl/one_vs_one/models/checkpoints/
+# python
+__pycache__/
+
+# test
+test.*
+
+# logs
+logs/*
+
+# coding agent
+.claude/

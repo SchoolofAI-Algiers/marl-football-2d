@@ -22,13 +22,13 @@ PENALTY_SPOT_RADIUS = 0.25
 # player attributes
 PLAYER_RADIUS = 1
 
-PLAYER_MAX_SPEED = 15  # Max sprint speed (m/s)
-PLAYER_MAX_ACCELERATION = 9  # Max acceleration (m/s²)
-PLAYER_MAX_ANGULAR_SPEED = np.pi / 4  # Max turning speed (rad/s)
-PLAYER_MAX_ANGULAR_ACCELERATION = np.pi / 8  # Max turning acceleration (rad/s²)
-PLAYER_MAX_KICKING_FORCE = 20  # Max kicking acceleration (m/s²)
+PLAYER_MAX_SPEED = 7  # Max sprint speed (m/s) — reference for full-size 22-player stadium
+PLAYER_MAX_ACCELERATION = 14  # Max acceleration (m/s²) — scales with stadium size
+PLAYER_MAX_ANGULAR_SPEED = np.pi  # Max turning speed (rad/s) — does NOT scale
+PLAYER_MAX_ANGULAR_ACCELERATION = np.pi / 2  # Max turning acceleration (rad/s²) — does NOT scale
+PLAYER_MAX_KICK_IMPULSE = 40  # Max kick impulse (m/s) — scales with stadium size
 
-BALL_MAX_SPEED = 30  # Max ball speed (m/s)
+BALL_MAX_SPEED = 60  # Max ball speed (m/s) — scales with stadium size
 KICK_COOLDOWN = 0.5
 
 # run (1-10), pass (20-100), shoot (200-500), action (continuous), 1 - 500, mean, variance, discrete action (kick, pass, shoot) -> [-1, 1] * action_type_max_force
@@ -38,7 +38,7 @@ BALL_RADIUS = 0.5
 
 # simulation attributes
 DT = 0.1
-MAX_GAME_TIME = 1024
+MAX_GAME_TIME = 128
 FPS = 60
 
 # visual attributes
@@ -53,10 +53,13 @@ RED = (255, 0, 0)
 BLUE = (0, 0, 255)
 
 # physics attributes
-PLAYER_FRICTION_FACTOR = 0.96
-BALL_FRICTION_FACTOR = 0.97
+PLAYER_FRICTION_FACTOR = 0.93
+BALL_FRICTION_FACTOR = 0.96
 ANGULAR_FRICTION_FACTOR = 0.95
 
 # Reward
-STEP_REWARD = -0.0001  # Small negative reward for each step to encourage efficiency
-KICK_REWARD = 0.1  # Small positive reward for kicking the ball
+STEP_REWARD = 0 # -0.0001  # Small negative reward for each step to encourage efficiency
+KICK_REWARD = 0.1  # Positive reward for kicking — must dominate proximity penalty
+PROXIMITY_REWARD_SCALE = 0.01  # Delta-based reward for approaching the ball (kept small to avoid punishing kicks)
+BALL_POSITION_REWARD_SCALE = 0.1  # Delta-based reward for ball advancing toward opponent goal
+CORNER_AVOIDANCE_REWARD_SCALE = 0.05  # Delta-based reward for moving away from corners

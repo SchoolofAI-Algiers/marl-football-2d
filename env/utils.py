@@ -1,13 +1,25 @@
+import os
 import math
 import random
+from typing import Tuple
+
+import numpy as np
 
 from env.config import (
     STADIUM_LENGTH, STADIUM_WIDTH, CENTER_CIRCLE_RADIUS, PENALTY_AREA_LENGTH, PENALTY_AREA_WIDTH, GOAL_AREA_LENGTH, GOAL_AREA_WIDTH, GOAL_WIDTH, GOAL_DEPTH, PENALTY_SPOT_DISTANCE, PENALTY_SPOT_RADIUS,
-    PLAYER_RADIUS, BALL_RADIUS, PLAYER_MAX_SPEED, PLAYER_MAX_ACCELERATION, PLAYER_MAX_ANGULAR_SPEED, PLAYER_MAX_ANGULAR_ACCELERATION, PLAYER_MAX_KICKING_FORCE, BALL_MAX_SPEED,
+    PLAYER_RADIUS, BALL_RADIUS, PLAYER_MAX_SPEED, PLAYER_MAX_ACCELERATION, PLAYER_MAX_ANGULAR_SPEED, PLAYER_MAX_ANGULAR_ACCELERATION, PLAYER_MAX_KICK_IMPULSE, BALL_MAX_SPEED,
     DT, MAX_GAME_TIME,
     PLAYER_FRICTION_FACTOR, BALL_FRICTION_FACTOR, ANGULAR_FRICTION_FACTOR, KICK_COOLDOWN
 )
 from env.schema import Dimensions, Physics, Simulation
+
+# System
+
+def fix_sdl():
+    import os
+    os.environ["SDL_AUDIODRIVER"] = "dummy"
+
+# Physics
 
 def scale_dimension(value: float, num_players: int, exponent: float = 1.0) -> float:
     """Scale a dimension with a logarithmic function and a tunable exponent."""
@@ -32,18 +44,20 @@ def get_dimensions(num_players: int) -> Dimensions:
         ball_radius=BALL_RADIUS
     )
     
-def get_physics() -> Physics:
+def get_physics(num_players: int) -> Physics:
+    scale = get_dimensions(num_players).stadium_length / STADIUM_LENGTH
+
     return Physics(
-        player_max_speed=PLAYER_MAX_SPEED,
-        player_max_acceleration=PLAYER_MAX_ACCELERATION,
+        player_max_speed=PLAYER_MAX_SPEED * scale,
+        player_max_acceleration=PLAYER_MAX_ACCELERATION * scale,
         player_max_angular_speed=PLAYER_MAX_ANGULAR_SPEED,
         player_max_angular_acceleration=PLAYER_MAX_ANGULAR_ACCELERATION,
-        player_max_kicking_force=PLAYER_MAX_KICKING_FORCE,
+        player_max_kick_impulse=PLAYER_MAX_KICK_IMPULSE * scale,
         player_friction_factor=PLAYER_FRICTION_FACTOR,
         ball_friction_factor=BALL_FRICTION_FACTOR,
         angular_friction_factor=ANGULAR_FRICTION_FACTOR,
-        ball_max_speed=BALL_MAX_SPEED,
-        kick_cooldown=KICK_COOLDOWN
+        ball_max_speed=BALL_MAX_SPEED * scale,
+        kick_cooldown=KICK_COOLDOWN,
     )
     
 def get_simulation() -> Simulation:
@@ -55,3 +69,43 @@ def get_simulation() -> Simulation:
 def random_float():
     """Generate a random float between 0 and 1."""
     return random.random()
+
+# Mirroring (for self-play)
+
+def mirror_position(pos: Tuple[float, float]) -> Tuple[float, float]:
+    """Mirror position both horizontally and vertically (180° rotation).
+    Assumes positions are normalized to [-1, 1]."""
+    return (-pos[0], -pos[1])
+
+def mirror_velocity(vel: Tuple[float, float]) -> Tuple[float, float]:
+    """Mirror velocity both horizontally and vertically (180° rotation)."""
+    return (-vel[0], -vel[1])
+
+def mirror_orientation(orientation: float) -> float:
+    """Mirror orientation (180° rotation). Input/output in normalized [-1, 1] range."""
+    angle_rad = orientation * np.pi
+    mirrored_angle = angle_rad + np.pi
+    while mirrored_angle > np.pi:
+        mirrored_angle -= 2 * np.pi
+    while mirrored_angle < -np.pi:
+        mirrored_angle += 2 * np.pi
+    return mirrored_angle / np.pi
+
+def mirror_angular_velocity(angular_vel: float) -> float:
+    """Mirror angular velocity (flip sign)."""
+    return -angular_vel
+
+def mirror_action(action: np.ndarray) -> np.ndarray:
+    """Mirror a 4-element action array [acc, ang_acc, kick_force, kick_angle].
+
+    - acceleration: unchanged (forward/backward relative to player)
+    - angular_acceleration: flips sign (left becomes right)
+    - kicking_force: unchanged
+    - kicking_angle: flips sign (left becomes right relative to player)
+    """
+    return np.array([
+        action[0],
+        -action[1],
+        action[2],
+        -action[3],
+    ], dtype=action.dtype)

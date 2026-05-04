@@ -21,7 +21,7 @@ class Physics(BaseModel):
     player_max_acceleration: float
     player_max_angular_speed: float
     player_max_angular_acceleration: float
-    player_max_kicking_force: float
+    player_max_kick_impulse: float
     player_friction_factor: float
     ball_friction_factor: float
     angular_friction_factor: float

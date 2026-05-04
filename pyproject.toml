@@ -3,14 +3,19 @@ name = "marl-football-2d"
 version = "0.1.0"
 description = "2D Multi-agent football simulation"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 
 dependencies = [
   "numpy",
   "pygame",
   "pydantic",
   "pymunk>=6.11.1",
-  "mlflow>=2.17.2",
+  "gymnasium>=1.0.0",
+  "pettingzoo>=1.24.0",
+  "ray[rllib]>=2.40",
+  "setuptools<70",
+  "tensorboard",
+  "gputil>=1.4.0",
 ]
 
 [build-system]
@@ -19,3 +24,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["env", "rl", "marl", "gameai"]
+
+[tool.uv.scripts]
+setup       = "uv venv && uv pip install -e ."
+setup-cuda  = "uv venv && uv pip install -e . && uv pip install torch --index-url https://download.pytorch.org/whl/cu121"
