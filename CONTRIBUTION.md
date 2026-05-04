@@ -33,4 +33,3 @@ Thank you for your interest in contributing to this project! To ensure a smooth 
    - After completing a major task, the **project manager** will open a PR from `development` into `main`.
 
 By following these guidelines, we can maintain a structured and efficient development process. Happy coding!
-
