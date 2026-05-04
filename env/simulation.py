@@ -1,35 +1,58 @@
-import os
-os.environ["SDL_AUDIODRIVER"] = "dummy" # Disable audio (wsl)
+import argparse
 
-import pygame
-import numpy as np
-from env.config import FPS, PLAYER_MAX_ACCELERATION, PLAYER_MAX_ANGULAR_ACCELERATION, PLAYER_MAX_KICKING_FORCE
+from env.utils import fix_sdl
+fix_sdl()
+
 from env.environment import FootballEnv
+from env.opponents import make_noop_opponent, make_random_opponent
 
-pygame.init()
-clock = pygame.time.Clock()
+OPPONENT_FACTORIES = {
+    "none": lambda: None,
+    "agents": lambda: "agents",
+    "noop": make_noop_opponent,
+    "random": make_random_opponent,
+}
 
-env = FootballEnv(team_size=5)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run a football simulation with random actions")
+    parser.add_argument("--team-size", type=int, default=2)
+    parser.add_argument("--opponent", choices=OPPONENT_FACTORIES.keys(), default="agents")
+    parser.add_argument("--ball", choices=["center", "random"], default="center")
+    parser.add_argument("--render", choices=["human", "rgb_array", "none"], default="human")
+    parser.add_argument("--log-interval", type=int, default=100)
+    return parser.parse_args()
 
-state = env.reset()
-done = False
+def main():
+    args = parse_args()
 
-def random_action():
-    acceleration = np.random.uniform(0, PLAYER_MAX_ACCELERATION)
-    angular_acceleration = np.random.uniform(-PLAYER_MAX_ANGULAR_ACCELERATION, PLAYER_MAX_ANGULAR_ACCELERATION)
-    kicking_force = np.random.uniform(0, PLAYER_MAX_KICKING_FORCE)
-    kicking_angle = np.random.uniform(-np.pi, np.pi)
-    return [acceleration, angular_acceleration, kicking_force, kicking_angle]
+    render_mode = None if args.render == "none" else args.render
+    opponent = OPPONENT_FACTORIES[args.opponent]()
 
-while not done:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            done = True
+    env = FootballEnv(
+        team_size=args.team_size,
+        opponent=opponent,
+        render_mode=render_mode,
+        ball_placement=args.ball,
+    )
 
-    actions = [random_action() for _ in range(env.num_players)]
-    state, rewards, done, _ = env.step(actions)
-    env.render()
-    
-    clock.tick(FPS)
+    observations, infos = env.reset()
+    done = False
+    step_count = 0
 
-pygame.quit()
+    while not done:
+        actions = {agent: env.action_space(agent).sample() for agent in env.agents}
+        observations, rewards, terminations, truncations, infos = env.step(actions)
+
+        done = len(env.agents) == 0
+
+        if not done and args.log_interval and step_count % args.log_interval == 0:
+            first_agent = list(rewards.keys())[0]
+            print(f"Step {step_count:05d} | Reward={rewards[first_agent]:.3f} | score={infos[first_agent]['score']}")
+
+        step_count += 1
+
+    print(f"Episode finished after {step_count} steps")
+    env.close()
+
+if __name__ == "__main__":
+    main()
